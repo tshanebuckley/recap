@@ -13,9 +13,14 @@ echo "Installing recap @VERSION@ into $TARGET (a few minutes)..."
 mkdir -p "$TARGET"
 "$HERE/recap-env.sh" -o "$TARGET" -s bash -q
 
-# the pretrained StarDist model, so the first run needs no internet
-mkdir -p "$HOME/.keras/models"
-cp -R "$HERE/stardist-models/StarDist2D" "$HOME/.keras/models/"
+# the pretrained StarDist model, so the first run needs no internet (kept if already there:
+# StarDist may have cached it differently, and copying over it fails)
+if [ -e "$HOME/.keras/models/StarDist2D/2D_versatile_fluo" ]; then
+  echo "StarDist model already in $HOME/.keras/models (kept)"
+else
+  mkdir -p "$HOME/.keras/models"
+  cp -R "$HERE/stardist-models/StarDist2D" "$HOME/.keras/models/"
+fi
 
 cat > "$TARGET/recap" <<EOS
 #!/bin/bash

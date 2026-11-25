@@ -6,13 +6,18 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $target = if ($args.Count -gt 0) { $args[0] } else { Join-Path $env:LOCALAPPDATA 'recap\@VERSION@' }
 Write-Host "Installing recap @VERSION@ into $target (a few minutes)..."
 New-Item -ItemType Directory -Force -Path $target | Out-Null
-& (Join-Path $here 'recap-env.ps1') -o $target -s cmd -q
+# pixi-unpack reads the pack from disk (a self-extracting script this size does not fit in PowerShell)
+& (Join-Path $here 'pixi-unpack.exe') (Join-Path $here 'recap-env.tar') -o $target -s cmd -q
 if ($LASTEXITCODE) { throw "unpacking failed ($LASTEXITCODE)" }
 
-# the pretrained StarDist model, so the first run needs no internet
+# the pretrained StarDist model, so the first run needs no internet (kept if already there)
 $keras = Join-Path $env:USERPROFILE '.keras\models'
-New-Item -ItemType Directory -Force -Path $keras | Out-Null
-Copy-Item -Recurse -Force (Join-Path $here 'stardist-models\StarDist2D') $keras
+if (Test-Path (Join-Path $keras 'StarDist2D\2D_versatile_fluo')) {
+    Write-Host "StarDist model already in $keras (kept)"
+} else {
+    New-Item -ItemType Directory -Force -Path $keras | Out-Null
+    Copy-Item -Recurse -Force (Join-Path $here 'stardist-models\StarDist2D') $keras
+}
 
 $launcher = Join-Path $target 'recap.bat'
 @'

@@ -3,13 +3,15 @@
     pixi run bundle linux-64 | win-64 | osx-arm64       (or: python packaging/build_bundle.py <platform>)
 
 Makes dist/recap-<version>-<platform>.zip holding:
-    recap-env.sh / recap-env.ps1   the whole environment (pixi-pack, self-extracting): Python,
-                                   TensorFlow/StarDist, napari, Qt and recap itself (as a wheel)
+    recap-env.sh                   Linux / Mac: the whole environment (pixi-pack, self-extracting):
+                                   Python, TensorFlow/StarDist, napari, Qt and recap itself (a wheel)
+    recap-env.tar, pixi-unpack.exe Windows: the same environment as a plain pack and its unpacker
+                                   (a self-extracting .ps1 this size is more than PowerShell can load)
     stardist-models/               the pretrained StarDist model, so the first run works offline
     install script(s)              unpack, copy the model, make the `recap` launcher and desktop icon
     README.txt
-Everything except Fiji. Packs for other systems can be built from any system; each can only be
-installed on the system it was built for.
+Everything except Fiji. Linux and Mac bundles can be built from any system; the Windows bundle
+is built on Windows (it ships the Windows pixi-unpack.exe). Each installs only on its own system.
 """
 
 import shutil
@@ -20,12 +22,26 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 HERE = Path(__file__).resolve().parent
-PLATFORMS = {"linux-64": "sh", "osx-arm64": "sh", "win-64": "ps1"}
+PLATFORMS = {"linux-64": "sh", "osx-arm64": "sh", "win-64": "tar"}
+PIXI_PACK = "0.7.12"  # pixi-pack and pixi-unpack must be the same version
 
 
 def run(cmd: list[str], **kw) -> None:
     print("+", " ".join(map(str, cmd)), flush=True)
     subprocess.run(cmd, check=True, **kw)
+
+
+def pixi_unpack_exe() -> Path:
+    """pixi-unpack.exe (conda-forge, the same version as pixi-pack) for the Windows bundle."""
+    if sys.platform != "win32":
+        raise SystemExit("The win-64 bundle must be built on Windows (it ships pixi-unpack.exe).")
+    code = "import shutil; print(shutil.which('pixi-unpack'))"
+    res = subprocess.run(["pixi", "exec", "--spec", f"pixi-unpack=={PIXI_PACK}", "--spec", "python", "--",
+                          "python", "-c", code], capture_output=True, text=True, check=True)  # fmt: skip
+    exe = Path(res.stdout.strip().splitlines()[-1])
+    if not exe.is_file():
+        raise SystemExit(f"pixi-unpack not found ({res.stdout!r})")
+    return exe
 
 
 def version() -> str:
@@ -57,11 +73,14 @@ def main() -> None:
     shutil.rmtree(wheels, ignore_errors=True)
     run([sys.executable, "-m", "pip", "wheel", str(ROOT), "--no-deps", "-q", "-w", str(wheels)])
     wheel = next(wheels.glob("recap-*.whl"))
-    pixi_pack = [shutil.which("pixi-pack")] if shutil.which("pixi-pack") else ["pixi", "exec", "pixi-pack"]
+    pixi_pack = ["pixi", "exec", "--spec", f"pixi-pack=={PIXI_PACK}", "pixi-pack"]
     env_file = out / f"recap-env.{PLATFORMS[platform]}"
+    windows = platform == "win-64"
+    if windows:
+        shutil.copy2(pixi_unpack_exe(), out / "pixi-unpack.exe")
     # recap is installed editable in the lock (not a wheel): skip that entry and inject the built wheel
-    run([*pixi_pack, "-e", "default", "-p", platform, "--create-executable", "--ignore-pypi-non-wheel",
-         "--inject", str(wheel), "-o", str(env_file), str(ROOT / "pixi.toml")])  # fmt: skip
+    run([*pixi_pack, "-e", "default", "-p", platform, *([] if windows else ["--create-executable"]),
+         "--ignore-pypi-non-wheel", "--inject", str(wheel), "-o", str(env_file), str(ROOT / "pixi.toml")])  # fmt: skip
     stardist_model(out / "stardist-models")
     files = ["README.txt"] + (["install.ps1", "Install recap.bat"] if platform == "win-64" else ["install.sh"])
     if platform == "osx-arm64":

@@ -43,6 +43,10 @@ things through the same code.
   workspace; `recap run` looks for Fiji only when the spot check needs it, and runs the spot
   check only on a whole workspace (as the app's Run all); spot-check counts are recorded even
   when the outputs are outside the folder.
+- Offline bundles: the installers keep a StarDist model already in the user's cache instead of
+  failing to copy over it; the Windows bundle ships the environment as `recap-env.tar` with
+  `pixi-unpack.exe` (a self-extracting PowerShell script of 1.4 GiB ran out of memory);
+  pixi-pack and pixi-unpack are pinned to 0.7.12.
 - Windows: a second launch of the app now reliably brings the open window forward (the
   running app reads the request asynchronously; the second launch waits until it is read).
 - Results from before 4.3 have no settings fingerprint, so they show as out of date until run
