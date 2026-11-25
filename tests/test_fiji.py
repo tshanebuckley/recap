@@ -1,5 +1,6 @@
 """Finding Fiji, and counting in Fiji (with a stand-in Fiji program, tests/fake_fiji.py)."""
 
+import re
 import sys
 from pathlib import Path
 
@@ -126,7 +127,8 @@ def test_old_interactive_section_still_loads(write_config, synth_dir, fake_fiji)
     )
     res = run_cli("validate", cfg)
     assert res.exit_code == 0 and "removed in recap 4.0" in res.output
-    assert f"fiji: {app.as_posix()}" in res.output  # carried over to validation.fiji
+    # carried over to validation.fiji (YAML quotes a Windows path: fiji: 'C:/...')
+    assert re.search(r"fiji: '?" + re.escape(app.as_posix()), res.output)
     assert run_cli("run", cfg).exit_code == 0  # runs, ignoring the old tuning step
 
 

@@ -65,12 +65,20 @@ class SingleInstance:
             sock.write(ACTIVATE)
             sock.flush()
             sock.waitForBytesWritten(1000)
+            # let the running app read it before hanging up (Windows named pipes drop unread data)
+            sock.waitForDisconnected(1000)
             sock.disconnectFromServer()
 
     def _handle_connection(self) -> None:
+        """New connection: read it when its data arrives (asynchronously; blocking reads here lose
+        the message on Windows)."""
         while self._server is not None and self._server.hasPendingConnections():
             conn = self._server.nextPendingConnection()
-            conn.waitForReadyRead(500)
-            if conn.readAll().data() == ACTIVATE and self.on_activate:
-                self.on_activate()
-            conn.disconnectFromServer()
+            conn.readyRead.connect(lambda c=conn: self._read(c))
+            if conn.bytesAvailable():
+                self._read(conn)
+
+    def _read(self, conn) -> None:
+        if ACTIVATE in conn.readAll().data() and self.on_activate:
+            self.on_activate()
+        conn.disconnectFromServer()  # tells the second launch it was heard

@@ -73,8 +73,13 @@ def test_add_layers_order_and_editing():
 
 
 # ----------------------------------------------------------------- one running app
-def test_single_instance():
+def test_single_instance(tmp_path):
+    """A second launch (a separate process, as when the icon is double-clicked again) does not
+    start and asks the running app to come forward."""
+    import subprocess
+
     qtcore = pytest.importorskip("qtpy.QtCore")
+    pytest.importorskip("qtpy.QtNetwork")
     from recap.gui.single_instance import SingleInstance
 
     app = qtcore.QCoreApplication.instance() or qtcore.QCoreApplication([])
@@ -83,12 +88,16 @@ def test_single_instance():
     first = SingleInstance(key, on_activate=lambda: activated.append(1))
     assert first.acquire()
     first.listen()
-    second = SingleInstance(key)
-    assert not second.acquire()  # already running: asks the first to come forward
-    deadline = qtcore.QDeadlineTimer(3000)
-    while not activated and not deadline.hasExpired():
+    code = (
+        "import sys; from recap.gui.single_instance import SingleInstance; "
+        f"sys.exit(0 if not SingleInstance({key!r}).acquire() else 3)"
+    )
+    second = subprocess.Popen([sys.executable, "-c", code])
+    deadline = qtcore.QDeadlineTimer(15000)
+    while (second.poll() is None or not activated) and not deadline.hasExpired():
         app.processEvents(qtcore.QEventLoop.ProcessEventsFlag.AllEvents, 50)
-    assert activated
+    assert second.wait(5) == 0  # the second launch saw the running app and stopped
+    assert activated  # and the running app was asked to come forward
     first.release()
     third = SingleInstance(key)
     assert third.acquire()  # free again after the first app exits

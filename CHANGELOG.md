@@ -43,6 +43,8 @@ things through the same code.
   workspace; `recap run` looks for Fiji only when the spot check needs it, and runs the spot
   check only on a whole workspace (as the app's Run all); spot-check counts are recorded even
   when the outputs are outside the folder.
+- Windows: a second launch of the app now reliably brings the open window forward (the
+  running app reads the request asynchronously; the second launch waits until it is read).
 - Results from before 4.3 have no settings fingerprint, so they show as out of date until run
   again; with an invalid recap.yaml the state is "unknown".
 - New: `docs/guide/`, a user guide organised by the test plan's user stories; GitHub issue
