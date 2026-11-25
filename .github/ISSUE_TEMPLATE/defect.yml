@@ -1,0 +1,69 @@
+name: Defect
+description: Something in recap failed, gave wrong numbers or was confusing (same fields as the test plan's Defects tab)
+title: "[US-xx] "
+labels: [defect]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing recap. Do not attach unpublished images or counts here; describe them, or
+        share them with the developers privately. Step-by-step help for every story: docs/guide/.
+  - type: input
+    id: story
+    attributes:
+      label: Story or check ID
+      description: From the test plan, e.g. US-09 or F-06. "none" if you found it outside the plan.
+      placeholder: US-09
+    validations:
+      required: true
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - Blocker (cannot continue the workflow)
+        - Major (wrong numbers, lost work, a crash)
+        - Minor (works, but confusing or slow)
+        - Cosmetic
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where
+      options: [The app, A command (terminal), Both, Install / offline bundle, Documentation]
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: System and recap version
+      description: e.g. "Windows 11, recap 4.3.0 (offline bundle)" (recap --version shows the version)
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: What you did
+      description: Steps to reproduce, from opening recap. Button names or the exact command.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened
+      description: Messages word for word. Screenshots help.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Run log (if a run was involved)
+      description: The end of results/run_<date>.log in the workspace.
+      render: text

@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    # The three systems the lab uses: Linux (also stands in for WSL2), Windows 11, Apple-silicon Mac.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: prefix-dev/setup-pixi@v0.11.3
+        with:
+          pixi-version: v0.84.2
+          environments: default
+          # After committing pixi.lock (run `pixi install` once locally), switch both to true:
+          # locked = fail if pixi.toml and pixi.lock disagree; cache = reuse the environment between runs.
+          locked: true
+          cache: true
+      - name: Lint and format check
+        if: matrix.os == 'ubuntu-latest'
+        run: pixi run lint
+      - name: Tests
+        run: pixi run test
+      - name: Command works
+        run: pixi run recap --version

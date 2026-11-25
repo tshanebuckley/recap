@@ -1,0 +1,29 @@
+# Cellpose version of the example workspace's recap.yaml (identical except segmentation.method),
+# to compare methods: pixi run -e cellpose recap run examples/other_settings/cellpose.yaml
+# then: recap report examples/results examples/results_cellpose -m examples/recap-data/recap.db
+# A settings file that is not a workspace's recap.yaml runs on its own: no batch or image settings.
+input:
+  images: [../Experiment_Hippoc_org_day_79_Acute_VimentinR_ICP8_G.tif]
+  dapi_channel: 2          # blue
+  vrc_channel: 1           # green = ICP8
+  neuron_channel: 0        # red = vimentin (glial/progenitor marker, NOT neuronal; stored as neuron_ring_mean)
+  exclude_regions:         # [y0, y1, x0, x1] burned-in timestamp and scale bar of this microscope export
+    - [0, 28, 0, 165]
+    - [990, 1038, 1132, 1390]
+normalization:
+  vrc_range: [3, 25]       # ICP8 raw range; background 95th percentile ~3. Re-check per imaging session.
+segmentation:
+  method: cellpose         # Cellpose-SAM (cpsam); weights download to ~/.cellpose/models on first use
+  diameter: 30             # px (~6 um); Cellpose rescales so nuclei are ~30 px (here: no rescale)
+  merge: false             # boundary merging fuses touching nuclei in model output
+  fragment_merge: "off"    # "off" | shape | shape_vrc (tested: small, mixed effect on this image)
+measurement:
+  neuron_ring_px: 5
+filters:
+  min_focus: 0.65          # relative to the image's median nucleus (1.0 = typical)
+  min_circularity: 0.65
+  max_area: 2840           # ~4x a typical nucleus; guard against merges only
+  exclude_border: true     # image edge + exclude_regions boxes ...
+  border_max_missing: 0.15 # ... but keep border nuclei estimated <= 15% clipped
+output:
+  directory: ../results_cellpose

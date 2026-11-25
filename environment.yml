@@ -1,0 +1,9 @@
+# conda env create -f environment.yml && conda activate recap && pip install -e ".[gui]"
+name: recap
+channels:
+  - conda-forge
+dependencies:
+  - python=3.13
+  - pip
+  - pip:
+      - -r requirements.txt

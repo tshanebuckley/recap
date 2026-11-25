@@ -1,0 +1,86 @@
+# recap (Reconstruction of Cellular Architecture and Phenotypes) configuration
+input:
+  images:                 # paths or globs, relative to this file
+    - data/*.tif
+  dapi_channel: 0         # 0-based channel indices
+  vrc_channel: 1          # ICP8 / ICP4 / click-labelled viral DNA
+  neuron_channel: null    # e.g. 2 for MAP2 or bIII-tubulin; null to skip
+  exclude_regions: []     # [y0, y1, x0, x1] boxes blanked before analysis (timestamps, scale bars)
+  use_workspace_settings: true  # images in a recap workspace: apply its workspace / batch / image settings
+
+normalization:
+  dapi_percentiles: [1.0, 99.8]
+  vrc_range: null         # [min, max] from an infected control; strongly recommended
+  vrc_weight: 1.0
+
+segmentation:
+  method: classical       # classical | stardist | cellpose  (stardist for dense tissue)
+  diameter: 40            # typical nuclear diameter, px
+  sigma: 2.0
+  threshold_method: otsu  # otsu | li | triangle
+  close_radius: null      # null = diameter/8
+  min_area: null          # null = area of a disk of diameter/2
+  h: null                 # h-maxima height, null = diameter/8
+  merge: true             # set false for stardist / cellpose
+  fragment_merge: "off"   # "off" | shape | shape_vrc : rejoin pieces of split nuclei
+  merge_ratio: 0.8        # higher = fewer merges
+  stardist_model: 2D_versatile_fluo   # or a trained version: recap-data/models/stardist/v2
+  cellpose_model: null    # null = Cellpose-SAM; or a trained model file
+  stardist_scale: 1.0     # <1 if nuclei are larger than ~25 px across
+  prob_thresh: null       # null = model default
+  nms_thresh: null        # null = model default
+
+measurement:
+  vrc_threshold: 0.3
+  infected_fraction: 0.05
+  neuron_ring_px: 6
+  min_fragment_area: 10
+
+fragments:                # thresholds for segmentation.fragment_merge
+  candidate_area_ratio: 0.5   # piece if area < 0.5 x median nucleus ...
+  candidate_circularity: 0.65 # ... or circularity below this
+  gap_px: 2                   # max gap bridged between pieces
+  min_solidity: 0.93          # merged object must be this convex (merged neighbour pairs rarely are)
+  max_fit_error: 0.10         # merged outline must fit an ellipse
+  area_percentiles: [1, 99]   # merged area within the normal range of nuclei
+  max_iterations: 3
+
+filters:                  # final per-nucleus filters; null = off
+  min_area: null          # px, on top of segmentation.min_area
+  max_area: null          # px; infected nuclei swell, keep generous (e.g. 4x a typical nucleus)
+  min_circularity: null   # 0-1; ~0.65 drops crescents and clipped pieces, keeps elongated nuclei
+  min_focus: null         # relative to the image's median nucleus; ~0.65 drops dim, blurred nuclei
+  exclude_border: false   # drop nuclei touching the image edge or an exclude_regions box
+  border_px: 2
+  border_max_missing: null    # e.g. 0.15: keep border nuclei estimated <=15% clipped (null = drop all)
+  border_max_fit_error: 0.10  # shape check for kept border nuclei
+  border_area_percentiles: [1, 99]   # size check: predicted full area vs non-border nuclei
+
+qc:                       # per-image warnings (qc_flags) and count ranges in the batch summary
+  saturation_max_fraction: 0.005  # flag a channel with more pixels at its maximum value
+  min_nuclei: 20                  # flag images with fewer counted nuclei
+  max_excluded_fraction: 0.30     # flag if filters drop more than 30% of nuclei
+  max_out_of_focus_fraction: 0.25
+  blurry_vs_batch: 0.6            # flag images < 0.6 x the batch median sharpness (>= 3 images)
+  vrc_background_max: 0.3         # flag high ICP8 background (normalised, outside nuclei)
+  focus_delta: 0.10               # count range: each cutoff moved down and up by these amounts
+  circularity_delta: 0.05
+  border_missing_delta: 0.05
+  infected_fraction_factor: 2.0   # infected_fraction divided and multiplied by this
+
+validation:               # manual spot check after segmentation, counted in Fiji
+  enabled: false
+  sample_size: 5          # images to count by hand
+  sample_fraction: null   # e.g. 0.1 = 10% of images; overrides sample_size
+  seed: null              # null = random; the seed used is written to the run log
+  count_infected: true    # Multi-point counter 0 = uninfected, counter 1 = infected
+  fiji: null              # null = find automatically (recap fiji set, RECAP_FIJI, ~/Fiji.app,
+                          # /Applications/Fiji.app, C:/Fiji.app ...); or a Fiji folder (forward slashes)
+  counted_by: null        # name stored with new counts; null = your login name
+  previous_counts: null   # e.g. results/manual_counts_20261113_101500.csv
+  top_up: false           # with previous_counts, add random images up to sample_size
+
+output:
+  directory: results
+  save_labels: true
+  save_qc: true

@@ -1,0 +1,20 @@
+name: recap
+display_name: recap
+contributions:
+  commands:
+    - id: recap.main
+      python_name: recap.gui.panels:RecapPanel
+      title: recap
+    - id: recap.tuning
+      python_name: recap.gui.panels:TuningPanel
+      title: recap tuning
+    - id: recap.training
+      python_name: recap.gui.panels:TrainingPanel
+      title: recap training
+  widgets:
+    - command: recap.main
+      display_name: recap
+    - command: recap.tuning
+      display_name: Tuning
+    - command: recap.training
+      display_name: Training

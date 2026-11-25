@@ -1,0 +1,30 @@
+# Environments, caches, builds
+.pixi/
+.venv/
+.direnv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+dist/
+
+# Lab data and everything recap makes from it: never commit images, counts or results.
+# (Tests make their own synthetic images in temporary folders.)
+*.tif
+*.tiff
+*.czi
+*.lif
+*.nd2
+recap-data/
+results*/
+report/
+compare/
+manual_counts*.csv
+
+# Personal files
+.DS_Store
+Thumbs.db
+*.swp
+.vscode/
+.idea/

@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+message: >-
+  If you use recap in your research, please cite it as below. recap is under development and has
+  not been published yet; results should be checked against manual counts before they are reported.
+title: "recap: Reconstruction of Cellular Architecture and Phenotypes"
+abstract: >-
+  Nuclear segmentation, counting and HSV-1 infection scoring (VRC+ / VRC-) for fluorescence images
+  of neural tissue (DAPI and a viral replication compartment marker such as ICP8), with manual
+  counting, per-batch and per-image settings, tuning and model training against corrected masks.
+  Developed with test images, manual counts and biological guidance from Leonardo D'Aiuto.
+type: software
+authors:
+  - given-names: Shane
+    family-names: Buckley
+version: 4.3.0
+license: MIT
+keywords:
+  - nuclear segmentation
+  - HSV-1
+  - viral replication compartments
+  - fluorescence microscopy
+  - StarDist
+  - napari

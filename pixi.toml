@@ -1,0 +1,80 @@
+[workspace]
+name = "recap"
+version = "4.3.0"
+description = "recap (Reconstruction of Cellular Architecture and Phenotypes): nuclear segmentation and HSV-1 infection scoring (DAPI + ICP8)"
+channels = ["conda-forge"]
+# linux-64 also covers WSL2 on Intel/AMD Windows PCs. osx-arm64 is Apple silicon; Intel Macs are
+# not supported (no TensorFlow 2.21 build for them). win-64 is native Windows 10/11.
+platforms = ["linux-64", "osx-arm64", "win-64"]
+
+# ---------------------------------------------------------------- shared by every environment
+[dependencies]
+python = "3.12.*"
+numpy = ">=2.0"
+scipy = ">=1.13"
+pandas = ">=2.2"
+scikit-image = ">=0.25"
+tifffile = ">=2024.8"
+imagecodecs = ">=2024.6"     # LZW-compressed TIFFs (microscope exports)
+pyyaml = ">=6"
+pydantic = ">=2.6"
+sqlmodel = ">=0.0.50,<0.0.51"   # workspace database; pre-1.0 releases can break: upgrade on purpose
+alembic = ">=1.13,<2"           # database migrations (src/recap/migrations)
+typer = ">=0.12"
+matplotlib = ">=3.8"
+pytest = ">=8"
+ruff = ">=0.6"
+"ruamel.yaml" = ">=0.18,<0.19"   # edits recap.yaml keeping its comments
+
+# recap itself, installed in editable mode: the `recap` command is on PATH in every
+# environment, and code changes take effect without reinstalling.
+[pypi-dependencies]
+recap = { path = ".", editable = true }
+
+# Fiji (opened for counting): set it per user with `pixi run recap fiji set /path/to/Fiji.app`
+# and validate with `pixi run recap fiji check`. To pin one location for everyone using this
+# project instead, uncomment:
+# [activation.env]
+# RECAP_FIJI = "/opt/Fiji.app"
+
+# ---------------------------------------------------------------- optional parts
+# conda-forge has current TensorFlow and StarDist for Linux and Apple silicon, but only very old
+# Windows builds, so on Windows both come from PyPI (official wheels, CPU only).
+[feature.stardist.target.linux-64.dependencies]
+stardist = "0.9.*"
+tensorflow = ">=2.15"        # CPU build unless the machine has CUDA (pixi detects it)
+
+[feature.stardist.target.osx-arm64.dependencies]
+stardist = "0.9.*"
+tensorflow = ">=2.15"        # CPU build (Apple silicon)
+
+[feature.stardist.target.win-64.pypi-dependencies]
+stardist = "==0.9.*"
+tensorflow = ">=2.15"        # CPU build; GPU TensorFlow on native Windows ended at 2.10
+
+[feature.cellpose.dependencies]
+pytorch-cpu = ">=2.3"        # CPU-only PyTorch; for a GPU see the README section on pixi
+torchvision = "*"            # from conda-forge so PyPI does not pull its own (CUDA) torch
+
+[feature.cellpose.pypi-dependencies]
+cellpose = ">=4.2,<5"        # Cellpose-SAM; weights download on first use
+
+[feature.gui.dependencies]
+napari = ">=0.10,<0.11"      # desktop app (`recap gui`); napari changes between minor versions: upgrade on purpose
+pyqt6 = ">=6.7"              # Qt 6 backend for napari
+
+# ---------------------------------------------------------------- environments
+# TensorFlow (StarDist) and PyTorch (Cellpose) live in separate environments.
+[environments]
+default = ["stardist", "gui"]
+cellpose = ["cellpose", "gui"]
+
+# ---------------------------------------------------------------- tasks
+# The `recap` command itself needs no task: `pixi run recap run examples`, or `pixi shell`
+# and then `recap run examples`.
+[tasks]
+test = "pytest -q"
+lint = "ruff check src tests packaging && ruff format --check src tests packaging"
+format = "ruff format src tests packaging && ruff check --fix src tests packaging"
+bundle = "python packaging/build_bundle.py"         # pixi run bundle win-64 | osx-arm64 | linux-64
+db-revision = "python -m recap.migrations"   # pixi run db-revision "what changed": new migration from db.py

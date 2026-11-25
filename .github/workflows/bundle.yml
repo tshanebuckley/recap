@@ -1,0 +1,82 @@
+name: Offline bundles
+
+# Builds the offline install bundle for each system (packaging/build_bundle.py), installs it on
+# that system as a test, and on a version tag (v4.3.0, v4.3.0-rc.1, ...) attaches it to the GitHub Release.
+# Bundles are about 1.4 GiB each: under the 2 GiB limit per release file, but far over the free
+# plan's 500 MB of Actions artifact storage, so they are kept as run artifacts only on request.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      keep_artifacts:
+        description: "Keep the bundles as run artifacts for 3 days (counts against Actions storage)"
+        type: boolean
+        default: false
+
+jobs:
+  bundle:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: win-64, os: windows-latest }
+          - { platform: osx-arm64, os: macos-latest }
+          - { platform: linux-64, os: ubuntu-latest }
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write # to attach files to the release
+    steps:
+      - uses: actions/checkout@v7
+      - uses: prefix-dev/setup-pixi@v0.11.3
+        with:
+          pixi-version: v0.84.2
+          environments: default
+          locked: false # set to true once pixi.lock is committed
+          cache: false
+
+      - name: Build the bundle
+        run: pixi run bundle ${{ matrix.platform }}
+
+      - name: Install it and run recap (Linux, macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          RECAP_NO_ICON: "1"
+        run: |
+          cd "$RUNNER_TEMP" && unzip -q "$GITHUB_WORKSPACE"/dist/recap-*-${{ matrix.platform }}.zip
+          ./recap-*-${{ matrix.platform }}/install.sh "$RUNNER_TEMP/recap"
+          "$RUNNER_TEMP/recap/recap" --version
+          mkdir ws && "$RUNNER_TEMP/recap/recap" init ws && "$RUNNER_TEMP/recap/recap" status ws
+
+      - name: Install it and run recap (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          RECAP_NO_ICON: "1"
+        run: |
+          $zip = Get-ChildItem dist -Filter "recap-*-win-64.zip" | Select-Object -First 1
+          Expand-Archive $zip.FullName -DestinationPath $env:RUNNER_TEMP
+          $dir = Get-ChildItem $env:RUNNER_TEMP -Directory -Filter "recap-*-win-64" | Select-Object -First 1
+          & (Join-Path $dir.FullName "install.ps1") "$env:RUNNER_TEMP\recap"
+          & "$env:RUNNER_TEMP\recap\recap.bat" --version
+          New-Item -ItemType Directory ws | Out-Null
+          & "$env:RUNNER_TEMP\recap\recap.bat" init ws
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & "$env:RUNNER_TEMP\recap\recap.bat" status ws
+
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v3
+        with:
+          files: dist/recap-*-${{ matrix.platform }}.zip
+
+      - name: Keep as a run artifact
+        if: inputs.keep_artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: recap-${{ matrix.platform }}
+          path: dist/recap-*-${{ matrix.platform }}.zip
+          compression-level: 0 # already compressed
+          retention-days: 3
