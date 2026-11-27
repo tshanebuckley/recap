@@ -102,6 +102,26 @@ def test_window_stays_on_the_screen():
     assert win.height() <= max(avail.height(), win.minimumSizeHint().height())
 
 
+def test_window_fits_a_small_screen_whatever_the_text_size():
+    """No row of buttons may set the window's width: text is wider on Windows (DEF-008 came back
+    there with 1020 px), so the top bar, the Show bar and the tab pages scroll sideways instead."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    QtWidgets = pytest.importorskip("qtpy.QtWidgets")
+    from recap.gui.window import RecapWindow
+
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    normal = app.font()
+    big = app.font()
+    big.setPointSizeF(normal.pointSizeF() * 1.5)
+    app.setFont(big)
+    try:
+        win = RecapWindow()
+        assert win.minimumSizeHint().width() < 912
+        assert win._side_width >= max(w.minimumSizeHint().width() for w in (win.images, win.count, win.outlines))
+    finally:
+        app.setFont(normal)
+
+
 @pytest.mark.skipif(not os.environ.get("RECAP_SLOW_TESTS"), reason="slow; run with RECAP_SLOW_TESTS=1")
 def test_real_stardist_in_the_helper_matches_in_process(synth_dir):
     from conftest import make_synthetic

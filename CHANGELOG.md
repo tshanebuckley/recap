@@ -1,5 +1,18 @@
 # Changelog
 
+## 5.3.5 — 2026-11-27
+Fix: the window was still too wide for small laptop screens on Windows (the CI test
+`test_window_stays_on_the_screen` failed there: 1020 px minimum, against 863 on Linux).
+
+- Rows of buttons no longer set the window's width. Text and buttons are wider on Windows, so the
+  rows that fit on Linux (the top bar; the tab pages' button rows) made the window wider than a
+  1366 x 768 laptop at 150% display scaling (912 px across). The top bar now scrolls sideways
+  like the Show bar, and each tab page scrolls when the side panel is smaller than it. The
+  window's minimum width is now about 460 px whatever the text size; at its normal size nothing
+  scrolls (the side panel opens as wide as its widest page).
+- Test: the window's minimum width with text 1.5 times larger than normal, so this is caught on
+  Linux too.
+
 ## 5.3.4 — 2026-11-27
 Documentation brought up to date with the code, with pictures of the app.
 

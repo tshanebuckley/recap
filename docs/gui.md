@@ -110,8 +110,10 @@ configuration (`hardware.graphics.enable = true;`). Linux without a GPU (a VM, a
 needs Mesa installed on the system; recap then uses its software renderer.
 
 **Window size.** The window opens at 1500 x 950, or smaller on a smaller screen, and keeps itself
-on the screen; it needs about 870 x 300 (the Show bar and the Settings rows scroll sideways when
-narrower). The side panel widens to the Settings rows when there is room.
+on the screen. It needs about 460 x 300 whatever the text size: the top bar, the Show bar and
+every tab page scroll sideways when the window is narrower than they are, so no row of buttons
+sets the window's width (text is wider on Windows: the minimum there was 1020 px before 5.3.5).
+The side panel opens wide enough for its widest page when the screen allows.
 
 ## Next steps
 

@@ -69,6 +69,27 @@ def _mods(event) -> set[str]:
     return {str(getattr(m, "name", m)).lower() for m in (event.modifiers or ())}
 
 
+def sideways(widget: QWidget) -> QScrollArea:
+    """A one-row strip (top bar, Show bar) that scrolls sideways when the window is narrower."""
+    bar = QScrollArea()
+    bar.setWidget(widget)
+    bar.setWidgetResizable(True)
+    bar.setFrameShape(QScrollArea.Shape.NoFrame)
+    bar.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    bar.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+    bar.setFixedHeight(widget.sizeHint().height() + bar.horizontalScrollBar().sizeHint().height() + 6)
+    return bar
+
+
+def scrolling(page: QWidget) -> QScrollArea:
+    """A tab page that scrolls (sideways or down) when the side panel is smaller than the page."""
+    area = QScrollArea()
+    area.setWidget(page)
+    area.setWidgetResizable(True)
+    area.setFrameShape(QScrollArea.Shape.NoFrame)
+    return area
+
+
 # =============================================================================================
 class CountTab(QWidget):
     """Counting by clicking on the image."""
@@ -419,20 +440,19 @@ class RecapWindow(QMainWindow):
         left = QWidget()
         l_lay = QVBoxLayout(left)
         l_lay.setContentsMargins(0, 0, 0, 0)
-        l_lay.addLayout(self._top_bar())
+        # Rows of buttons and pages scroll sideways on a narrow window instead of making the window
+        # wider than the screen (laptops at 125-150% display scaling: Windows' setGeometry warnings, a
+        # window partly off screen). Text is wider on Windows, so no row may set the window's width.
+        top = QWidget()
+        top.setLayout(self._top_bar())
+        top.layout().setContentsMargins(0, 0, 0, 0)
+        self.top_bar = sideways(top)
+        l_lay.addWidget(self.top_bar)
         if canvas is not None:
             l_lay.addWidget(canvas, 1)
         self.view = ViewBox(self)
-        # the Show bar scrolls sideways on a narrow window instead of making the window wider than the
-        # screen (Windows laptops at 125-150% scaling: setGeometry warnings, a window partly off screen)
-        bar = QScrollArea()
-        bar.setWidget(self.view)
-        bar.setWidgetResizable(True)
-        bar.setFrameShape(QScrollArea.Shape.NoFrame)
-        bar.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        bar.setFixedHeight(self.view.sizeHint().height() + bar.horizontalScrollBar().sizeHint().height() + 12)
-        self.view_bar = bar
-        l_lay.addWidget(bar)
+        self.view_bar = sideways(self.view)
+        l_lay.addWidget(self.view_bar)
         self.help = QLabel()
         self.help.setWordWrap(True)
         self.help.setStyleSheet("color: gray")
@@ -449,9 +469,9 @@ class RecapWindow(QMainWindow):
         self.tabs = QTabWidget()
         self.count = CountTab(self)
         self.outlines = OutlinesTab(self)
-        for w, label in ((self.images, "Images"), (self.count, "Count"), (self.outlines, "Fix outlines"),
-                         (self.guided, "Settings")):  # fmt: skip
-            self.tabs.addTab(w, label)
+        pages = (self.images, self.count, self.outlines, self.guided)
+        for w, label in zip(pages, ("Images", "Count", "Fix outlines", "Settings")):
+            self.tabs.addTab(scrolling(w), label)
         self._tab = 0
         self.tabs.currentChanged.connect(self._tab_changed)
         r_lay.addWidget(self.tabs, 1)
@@ -459,8 +479,9 @@ class RecapWindow(QMainWindow):
         rows = (
             self.guided.scroll.widget().sizeHint().width() + self.guided.scroll.verticalScrollBar().sizeHint().width()
         )
-        right.setMinimumWidth(380)  # (narrower than its rows: the Settings page scrolls sideways)
-        self._side_width = max(430, rows + 40)  # its width when the screen allows (see fit_to_screen)
+        right.setMinimumWidth(380)  # (narrower than a page: the page scrolls sideways)
+        widest = max(w.minimumSizeHint().width() for w in pages) + 30
+        self._side_width = max(430, rows + 40, widest)  # its width when the screen allows (see fit_to_screen)
         split.addWidget(right)
         split.setStretchFactor(0, 3)
         split.setStretchFactor(1, 1)
