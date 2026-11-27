@@ -1,5 +1,19 @@
 # Changelog
 
+## 5.3.1 — 2026-11-25
+Documentation: how recap counts.
+
+- **New `docs/pipeline.md`**: each step from the image file to the counts (load, recovery,
+  segmentation, clean-up and fragments, measurement, filters, infection call, quality checks,
+  output files), which settings belong to each step, which steps are slow (rerun the model) and
+  which are fast, and where the code is.
+- **The recovery step in detail**: why weak-DAPI infected nuclei are missed by DAPI alone, the
+  combined image `max(DAPI, w x ICP8)` with a worked example, how to choose the ICP8 range and
+  weight and what goes wrong when either is off, why a fixed range matters for the infection
+  call too, and how to check it with the *recovered (DAPI + ICP8)* layer.
+- Linked from the user guide's index, the Guided settings page, the glossary, the README and
+  `docs/architecture.md`.
+
 ## 5.3.0 — 2026-11-25
 The app no longer loads TensorFlow: fast drawing on Linux without a GPU, no freeze, prompt exit;
 and a window that fits laptop screens.

@@ -35,6 +35,7 @@ go back to counting and correcting whenever the settings change.
 | 6. Train and run all | [Model versions, the full run, the report](06-train-and-run-all.md) | US-18 to US-20 |
 | 7. Keep and share work | [Import, move, share settings and models, update, terminal and app together](07-keep-and-share.md) | US-21, US-22, US-32, US-23 to US-25, US-28 |
 | Handoff and testing | [Using the test plan, reporting problems](08-testing-and-handoff.md) | US-26, US-27 |
+| How recap counts | [The pipeline step by step, and the recovery step in detail](../pipeline.md) | |
 | Words used | [Glossary](glossary.md) | |
 
 ## Three things to know first

@@ -3,6 +3,8 @@
 recap (Reconstruction of Cellular Architecture and Phenotypes) is a library with a thin command line on top. Everything the CLI does can be done from
 Python without printing, which is how a GUI (napari, Qt, web) should use it.
 
+What each step of the pipeline does to an image, and why: [pipeline.md](pipeline.md).
+
 ## Modules
 
 Arrows point from a module to what it uses; there are no cycles.

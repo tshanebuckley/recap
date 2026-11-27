@@ -1,4 +1,4 @@
-# recap 5.3.0
+# recap 5.3.1
 
 **recap: Reconstruction of Cellular Architecture and Phenotypes**
 
@@ -60,6 +60,7 @@ the command for every button in the app. **New to recap? Start with the
 |---|---|
 | `src/recap/` | The package: library modules plus a thin command line (`cli.py`) |
 | `docs/guide/` | **User guide**: the workflow step by step, organised by the test plan's user stories |
+| `docs/pipeline.md` | **How recap counts**: each step of the pipeline, and the recovery step in detail |
 | `docs/architecture.md` | Module map and the library interface (for a GUI or scripts) |
 | `docs/output_columns.md` | Every column of every output CSV |
 | `docs/gui.md` | The desktop app: running it, code layout, next steps, useful napari plugins |

@@ -15,7 +15,7 @@
 | **state** | Whether recap's count for an image is *up to date* with its current settings and model, *out of date*, *not run*, or *unknown* (invalid recap.yaml). |
 | **run** | recap processing images: each image's outputs in its folder under `processed/`, the run's summary and log in `processed/runs/<date>/`, recorded in the workspace. |
 | **spot check** | Before a full run, counting a random sample by hand to see how recap compares (`validation.enabled`). |
-| **recovery** | Combining DAPI and ICP8 into the image the model sees, so infected nuclei with weak DAPI are still found. |
+| **recovery** | Combining DAPI and ICP8 into the image the model sees, so infected nuclei with weak DAPI are still found ([details](../pipeline.md#1-recovery)). |
 | **segmentation** | Finding the nuclei's outlines (StarDist by default). |
 | **fragments** | Pieces of one nucleus that the model split; recap can rejoin them. |
 | **filters** | Rules that drop outlines that are not whole, in-focus nuclei (focus, roundness, area, border). |

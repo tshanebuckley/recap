@@ -14,11 +14,13 @@ preview shows VRC+ nuclei in magenta and VRC− in cyan, with the counts below.
 
 | Step | Settings | What they do |
 |---|---|---|
-| 1. Recovery | ICP8 weight, ICP8 range | How the DAPI and ICP8 channels are combined into the image the model sees. Raise the weight when infected nuclei have weak DAPI. Fix the range per staining batch. |
+| 1. Recovery | ICP8 weight, ICP8 range | How the DAPI and ICP8 channels are combined into the image the model sees. Raise the weight when infected nuclei have weak DAPI. Fix the range per staining batch. [How recovery works](../pipeline.md#1-recovery). |
 | 2. Segmentation | StarDist threshold, StarDist overlap, nucleus diameter | How sure the model must be, how much nuclei may overlap. |
 | 3. Fragments | Merge fragments | Rejoin nuclei the model split into pieces. |
 | 4. Filters | Min focus, min roundness, min / max area, border | Which outlines count as real, whole, in-focus nuclei. |
 | 5. Infection call | VRC+ pixel threshold, VRC+ area fraction | When a nucleus counts as VRC+. |
+
+What each step does to the image, and why: [How recap counts](../pipeline.md).
 
 Hover any setting for an explanation. Filters and the infection call update in about a second;
 steps 1 and 2 rerun the model (*Segmenting...*, a few seconds). **Undo changes** returns to the
