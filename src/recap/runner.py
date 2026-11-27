@@ -65,7 +65,7 @@ def new_stamp(out_dir: Path) -> str:
     """Date and time of a run; a suffix if a run in the same second already used it."""
     base = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
     stamp, k = base, 1
-    while (Path(out_dir) / f"run_log_{stamp}.yaml").exists() or (Path(out_dir) / f"run_{stamp}.log").exists():
+    while any((Path(out_dir) / n).exists() for n in (f"run_log_{stamp}.yaml", f"run_{stamp}.log", stamp)):
         k += 1
         stamp = f"{base}_{k}"
     return stamp
@@ -128,8 +128,9 @@ def run_workspace(
         raise ConfigError(f"{config_path}: {e}") from e
     except Exception as e:  # noqa: BLE001  (RecapError: no recap.yaml)
         raise ConfigError(str(e)) from e
+    shas = [ws.sha_of(p) for p in images] if images else None  # (before scan may move them into raw/)
     ws.scan()
-    paths = [Path(p) for p in images] if images else ws.images(cfg)
+    paths = [ws.image_path(h) for h in shas] if shas else ws.images(cfg)
     ignored = [p for p in paths if ws.is_ignored(p)]
     if ignored:
         raise ConfigError(
@@ -146,17 +147,33 @@ def run_workspace(
         d = cfg.model_dump()
         d["validation"]["enabled"] = False
         cfg = PipelineConfig.model_validate(d)
-    out_dir = ws.output_dir(cfg)
-    stamp = new_stamp(out_dir)
+    from recap.layout import COMPARISONS, RUNS
+
+    image_dir = None
+    if settings_file:  # a comparison run: one flat folder of its own, under processed/comparisons/
+        out_dir = ws.output_dir() / COMPARISONS / Path(cfg.output.directory).name
+        stamp = new_stamp(out_dir)
+    else:  # processed/runs/<stamp>/, and each image's outputs in its own folder
+        stamp = new_stamp(ws.output_dir() / RUNS)
+        out_dir = ws.run_dir(stamp)
+        folders: dict[Path, Path] = {}
+
+        def image_dir(p: Path) -> Path:
+            if p not in folders:
+                from recap.io import file_sha256
+
+                folders[p] = ws.image_folder(file_sha256(p))
+            return folders[p]
+
     log_file = setup_logging(out_dir, stamp)
     try:
         result = _run(config_path, raw, cfg, sha, paths, stamp, out_dir, log_file, decide, progress, cancel,
-                      counter, ws, comparison=settings_file is not None)  # fmt: skip
+                      counter, ws, comparison=settings_file is not None, image_dir=image_dir)  # fmt: skip
     finally:
         close_logging()
     if settings_file:
         return result
-    ws.record_run(out_dir / f"run_log_{stamp}.yaml")  # wherever output.directory is
+    ws.record_run(out_dir / f"run_log_{stamp}.yaml")
     if "manual_counts" in result.files:  # the spot check's counts, also when the outputs are outside the folder
         from recap.counts import read_manual_counts
 
@@ -168,7 +185,7 @@ def run_workspace(
 
 
 def _run(config_path, raw, cfg, sha, paths, stamp, out_dir, log_file, decide, progress, cancel, counter,
-         ws, comparison: bool = False) -> RunResult:  # fmt: skip
+         ws, comparison: bool = False, image_dir=None) -> RunResult:  # fmt: skip
     log.info("recap %s | config %s | %d image(s)", __version__, config_path, len(paths))
     for note in deprecation_notes(cfg):
         log.warning(note)
@@ -216,7 +233,9 @@ def _run(config_path, raw, cfg, sha, paths, stamp, out_dir, log_file, decide, pr
             log.info("Counts and configuration saved; batch not run.")
 
     images_log = (
-        run_batch(final, paths, out_dir, stamp, cache, progress, cancel, settings_for) if status == "completed" else []
+        run_batch(final, paths, out_dir, stamp, cache, progress, cancel, settings_for, image_dir)
+        if status == "completed"
+        else []
     )
     if any("cancelled" in d for d in images_log):
         status = "cancelled"

@@ -65,5 +65,5 @@ body:
     id: log
     attributes:
       label: Run log (if a run was involved)
-      description: The end of results/run_<date>.log in the workspace.
+      description: The end of processed/runs/<date>/run_<date>.log in the workspace.
       render: text

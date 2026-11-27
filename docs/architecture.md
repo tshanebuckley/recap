@@ -35,6 +35,7 @@ errors: used everywhere
 | `workspace` | A folder of images with one settings file (`recap.yaml`: every level of the settings), an optional `.recapignore` and one database (`recap-data/recap.db`): images, runs (and whether each image is up to date), manual counts, corrected masks, batch membership, model versions (and which is used), tuning, reports. `open_workspace`, `init_workspace`; moves settings older versions kept in the database into `recap.yaml` when it opens a workspace. | Yes: the app's data model. The CLI and the app call the same methods. |
 | `settingsfile` | Edit `recap.yaml` keeping its comments (ruamel.yaml): the workspace's own sections and the `batches:` / `images:` entries. | Via `workspace`. |
 | `ignore` | `.recapignore`: which images a workspace leaves out (gitignore-like lines). | Via `workspace`. |
+| `layout` | Where a workspace keeps its files: `raw/` and `processed/`, mirrored, by batch; `Organizer` moves images and outputs to match batches (and reorganizes older workspaces once), updating the database, recap.yaml's `images:` entries and run logs; `recap-data/moves.csv`. Never moves files from outside the workspace. | Via `workspace`. |
 | `counting` | Manual counting shared by `recap count`, the app and the spot check: recap's adjusted view, saving under the counter's name. | Yes. |
 | `db`, `migrations` | SQLModel tables; version check, backup and Alembic upgrade when a workspace is opened. | Via `workspace`. |
 | `evaluate` | Score a segmentation against edited masks (F1, precision, recall, count error). | Yes. |
@@ -76,6 +77,8 @@ ws.save_effective("batch", sha, edited_cfg, keys) # store edited values at a lev
 ws.update_level("image", sha, {"filters.min_focus": 0.6}, reason="dim")   # = recap settings set
 ws.use_model("stardist", 2); ws.report(); ws.import_count(image, xml_file)
 ws.ignore([image_or_folder]); ws.unignore([...]); ws.images()   # .recapignore; images() leaves ignored ones out
+ws.image_folder(sha); ws.run_dir(stamp); ws.organize()           # processed/.../<image>/, processed/runs/<stamp>/
+ws.current_path(old_path); ws.sha_of(path)                      # follow recap's moves (recap-data/moves.csv)
 ```
 
 ### One image (previews, interactive work)

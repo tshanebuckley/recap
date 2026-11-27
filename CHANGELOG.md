@@ -1,5 +1,39 @@
 # Changelog
 
+## 5.1.0 — 2026-11-25
+Raw images and everything recap makes from them in two mirrored folders, by staining batch.
+
+- **Workspace layout.** `raw/batches/<batch>/` holds the images as acquired (`raw/unbatched/`:
+  no batch); `processed/batches/<batch>/<image>/` holds everything recap makes from each image:
+  its label images, tables and QC overlay from its latest run, and its corrected masks (now
+  `<image>_corrected_<N>.tif`, previously in `recap-data/masks/`). Each run's summaries, run log,
+  final config and spot check go to `processed/runs/<date_time>/`; comparison runs (`recap run
+  --settings`) to `processed/comparisons/<name>/`; reports to `processed/reports/<date_time>/`.
+  `output.directory` in a workspace's recap.yaml is no longer used for its own runs.
+- **Files follow batches.** Assigning, changing or removing an image's batch, and renaming or
+  deleting a batch, move its raw file and its `processed/` folder (new module `recap.layout`,
+  `Workspace.organize`). Added images are copied straight into `raw/` (`recap add --to` is gone);
+  images dropped anywhere else in the folder move into `raw/unbatched/` at the next scan; ignored
+  images stay where they are. Folders left empty are removed. Each move updates the database,
+  the image's entry under `images:` in recap.yaml and the run logs that name the file, and is
+  listed in `recap-data/moves.csv`; commands and runs accept an image's old path
+  (`Workspace.current_path`, `sha_of`). A file that cannot be moved (open elsewhere on Windows)
+  stays and is moved next time.
+- **Older workspaces are reorganized automatically** the first time 5.1 opens them: images from
+  anywhere in the folder, run outputs from the flat output folder, run-level files into one
+  folder per run, corrected masks from `recap-data/masks/`. recap never moves a file from
+  outside the workspace: a copied workspace whose run logs still name the original folder's files
+  uses (and points its run logs at) its own copies.
+- **Reports**: a workspace report compares "recap" (each image's latest result across the
+  workspace's runs) and each comparison run with the manual counts. `recap report` and `recap
+  compare` find each image's files through the run log (older flat run folders still work).
+  Each image's folder keeps only its latest outputs: to compare two settings image by image, make
+  one of them a comparison run.
+- `.gitignore` excludes `raw/`, `processed/` and `.recapignore`.
+- Tests: batch folders following assign / rename / delete and hand moves; adding images into
+  `raw/`; a 5.0-style workspace reorganized on opening; a copied 5.0 workspace takes nothing from
+  the original. Guide: US-31 (where files live).
+
 ## 5.0.0 — 2026-11-25
 Every setting in recap.yaml, images left out with .recapignore, and every run in a workspace.
 Major version: `recap run` / `run_pipeline` no longer run a settings file on its own, and the

@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from helpers import make_ws, run_cli
+from helpers import img, make_ws, run_cli
 from recap.gui.editing import CountEdit, OutlineEdit
 
 
@@ -69,7 +69,7 @@ def win(synth_dir, monkeypatch):
 
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     make_ws(synth_dir)
-    assert run_cli("run", synth_dir, "-i", synth_dir / "data" / "img1.tif").exit_code == 0
+    assert run_cli("run", synth_dir, "-i", img(synth_dir, "img1.tif")).exit_code == 0
     monkeypatch.setattr(common, "STATE", common.SharedState())
     monkeypatch.setattr(common, "run_in_background", lambda fn, done, err, bridge=None: done(fn()))
     monkeypatch.setattr(common, "counter_name", lambda parent, ask=False: "ana")
@@ -184,7 +184,7 @@ def test_add_images_dialog(win, tmp_path_factory, monkeypatch):
     from recap.gui import common, dialogs
 
     src = tmp_path_factory.mktemp("outside")  # (the workspace is tmp_path itself)
-    shutil.copy(common.STATE.workspace.root / "data" / "img1.tif", src / "again.tif")  # same content
+    shutil.copy(img(common.STATE.workspace.root, "img1.tif"), src / "again.tif")  # same content
     (src / "sub").mkdir()
     import tifffile
 

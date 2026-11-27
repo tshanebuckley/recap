@@ -1,7 +1,8 @@
 # Cellpose version of the example workspace's recap.yaml (identical except segmentation.method),
 # to compare methods on the workspace's images (a comparison run: the images' results stay StarDist's):
 #   pixi run -e cellpose recap run examples --settings examples/other_settings/cellpose.yaml
-#   recap report examples/results examples/results_cellpose -m examples/recap-data/recap.db
+#     -> examples/processed/comparisons/results_cellpose/
+#   recap report examples    (recap's StarDist results and this run, against the manual counts)
 input:
   dapi_channel: 2          # blue
   vrc_channel: 1           # green = ICP8
@@ -25,4 +26,4 @@ filters:
   exclude_border: true     # image edge + exclude_regions boxes ...
   border_max_missing: 0.15 # ... but keep border nuclei estimated <= 15% clipped
 output:
-  directory: results_cellpose   # relative to the workspace (examples/)
+  directory: results_cellpose   # the comparison run's folder: processed/comparisons/results_cellpose/

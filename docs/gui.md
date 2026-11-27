@@ -18,11 +18,11 @@ button calls the same library function as the command beside it, on the same `re
 | In the app | Command | Library |
 |---|---|---|
 | Images: Open... / New... (folder without recap.yaml) | `recap init FOLDER [--from FILE]` | `workspace.init_workspace` |
-| Add images (files or a folder), then the batch | `recap add FILES/FOLDERS [--batch NAME / --no-batch]` | `Workspace.add_images` |
+| Add images (files or a folder), then the batch (copied into raw/batches/<batch>/) | `recap add FILES/FOLDERS [--batch NAME / --no-batch]` | `Workspace.add_images` |
 | Images: table, filter, Rescan | `recap status` | `Workspace.scan`, `Workspace.status` |
 | Images: More > Ignore / Stop ignoring selected images; filter *ignored images* | `recap ignore PATH...`, `recap unignore PATH...`, `recap ignore` | `Workspace.ignore`, `unignore` (`.recapignore`) |
 | Images: Run selected / out-of-date / all, Run this image | `recap run [-i IMG] [--out-of-date]` | `runner.run_workspace` |
-| Images: Set batch..., More > Batches... | `recap batch assign / remove / rename / delete / list` | `Workspace.assign_batch`, `rename_batch`, `delete_batch` |
+| Images: Set batch..., More > Batches... (files move to the batch's folders) | `recap batch assign / remove / rename / delete / list` | `Workspace.assign_batch`, `rename_batch`, `delete_batch` (then `Workspace.organize`) |
 | Settings: Save to workspace / batch / this image (all into recap.yaml) | `recap settings set [--batch / --image --reason]` | `Workspace.save_effective`, `update_level` |
 | Settings: Clear this image's own settings | `recap settings clear --image IMG` | `Workspace.set_level_settings` |
 | Settings: values and where they come from | `recap settings show IMG` | `Workspace.resolve` |
@@ -30,7 +30,7 @@ button calls the same library function as the command beside it, on the same `re
 | Count: click, Save count | (none: clicking needs the app) | `counting.save_count` |
 | Fix outlines: Save corrected mask | (none: drawing needs the app) | `Workspace.save_mask` |
 | Images: More > Import counts... | `recap import-counts IMG FILE` | `Workspace.import_count` |
-| Images: More > Report | `recap report` | `Workspace.report` |
+| Images: More > Report (processed/reports/) | `recap report` | `Workspace.report` |
 | Images: More > Fiji location... | `recap fiji show / set` | `Workspace.fiji`, `fiji.set_default` |
 | Images: More > Your name for counts... | `recap count --by NAME --remember` | `counts.remember_counter_name` |
 | Images: More > Edit settings file | edit `recap.yaml` | |

@@ -299,12 +299,12 @@ class AddImagesDialog(QDialog):
         new = self.choice.currentData() == NEW_BATCH
         self.name.setEnabled(new)
         self.note.setEnabled(new)
-        from recap.workspace import safe_folder_name
+        from recap.layout import RAW, group
 
-        folder = safe_folder_name(self.batch() or "images")
+        folder = f"{RAW}/{group(self.batch()).as_posix()}"
         self.where.setText(
-            "They are in the workspace folder already: they stay where they are." if self.inside
-            else f"Copies go to the workspace's folder {folder}/; your originals are not changed."
+            f"They are in the workspace folder already: they move to {folder}/." if self.inside
+            else f"Copies go to the workspace's {folder}/; your originals are not changed."
         )  # fmt: skip
 
     def _accept(self) -> None:

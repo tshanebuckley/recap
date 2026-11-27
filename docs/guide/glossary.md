@@ -5,6 +5,7 @@
 | Word | Meaning |
 |---|---|
 | **workspace** | A folder of images with one settings file (`recap.yaml`, all levels of the settings), an optional `.recapignore` (images left out) and recap's folder `recap-data/` (database `recap.db`, corrected masks, model versions, tuning, reports, backups). |
+| **raw/, processed/** | The workspace's two mirrored trees: `raw/batches/<batch>/` holds the images as acquired, `processed/batches/<batch>/<image>/` everything recap made from each (outputs, corrected masks); `unbatched/` in both for images in no batch; `processed/runs/`, `comparisons/`, `reports/` for runs and reports. |
 | **ignored image** | An image listed in `.recapignore`: kept in the folder and in the database, but not run, counted, tuned, trained on or reported. `recap ignore` / `unignore`, or Ignore in the app. |
 | **recap.yaml** | The workspace's settings, for every image. The workspace level of the settings. |
 | **batch** (staining batch) | Images stained together. A batch can change some settings for its images. |

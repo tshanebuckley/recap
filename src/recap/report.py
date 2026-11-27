@@ -26,7 +26,7 @@ import numpy as np
 import pandas as pd
 import tifffile
 
-from recap.compare import latest, match, run_images
+from recap.compare import latest, match, run_images, run_outputs
 from recap.counts import ManualCount, compare_counts, read_manual_counts
 from recap.errors import RecapError
 from recap.io import file_sha256
@@ -45,13 +45,14 @@ class RunData:
     summary: pd.DataFrame
     images: dict[str, Path]  # sha256 -> image path (as processed)
     stems: dict[str, str]  # sha256 -> image file stem
+    files: dict[str, dict[str, Path]] = field(default_factory=dict)  # sha256 -> labels / table / ...
 
     def nuclei(self, sha: str) -> pd.DataFrame | None:
-        p = self.folder / f"{self.stems[sha]}_nuclei.csv"
+        p = self.files.get(sha, {}).get("table") or self.folder / f"{self.stems[sha]}_nuclei.csv"
         return pd.read_csv(p) if p.exists() else None
 
     def labels(self, sha: str) -> np.ndarray | None:
-        p = self.folder / f"{self.stems[sha]}_labels.tif"
+        p = self.files.get(sha, {}).get("labels") or self.folder / f"{self.stems[sha]}_labels.tif"
         return tifffile.imread(p) if p.exists() else None
 
 
@@ -62,19 +63,29 @@ class ReportResult:
     summary: pd.DataFrame | None = None
 
 
-def load_run(folder: Path, name: str) -> RunData:
-    summary = pd.read_csv(latest(folder, "image_summary_*.csv"))
-    images, stems = {}, {}
-    for p in run_images(folder):
-        if not p.exists():
-            log.warning("%s: image %s not found; it cannot be matched to manual counts", name, p)
-            continue
-        sha = file_sha256(p)
-        images[sha], stems[sha] = p, p.stem
-    summary["sha256"] = summary.image.map(
-        lambda s: next((h for h, p in images.items() if Path(s).name == p.name), None)
-    )
-    return RunData(name, folder, summary, images, stems)
+def load_run(folder: Path | list[Path], name: str) -> RunData:
+    """One method of a report: a run folder (its latest run), or several run folders (a workspace's
+    processed/runs/*) whose latest result per image is used."""
+    folders = [folder] if isinstance(folder, Path) else sorted(folder)
+    summaries, images, stems, files = [], {}, {}, {}
+    for f in folders:  # oldest first: later runs replace earlier results of the same image
+        summary = pd.read_csv(latest(f, "image_summary_*.csv"))
+        outs = run_outputs(f)
+        here = {}
+        for p in run_images(f):
+            if not p.exists():
+                log.warning("%s: image %s not found; it cannot be matched to manual counts", name, p)
+                continue
+            sha = file_sha256(p)
+            here[sha] = p
+            images[sha], stems[sha], files[sha] = p, p.stem, outs.get(str(p), {})
+        by_name = {p.name: h for h, p in here.items()}
+        summary["sha256"] = summary.image.map(lambda s, by_name=by_name: by_name.get(Path(s).name))
+        summaries.append(summary)
+    summary = pd.concat(summaries, ignore_index=True)
+    if len(folders) > 1:
+        summary = summary[summary.sha256.notna()].drop_duplicates("sha256", keep="last").reset_index(drop=True)
+    return RunData(name, folders[-1], summary, images, stems, files)
 
 
 def _program_counts(runs: list[RunData]) -> pd.DataFrame:
@@ -324,8 +335,10 @@ def _md_table(df: pd.DataFrame, cols: list[str]) -> str:
     return head + body
 
 
-def build_report(runs: list[tuple[str, Path]], manual_files: list[Path], out: Path, iou: float = 0.5) -> ReportResult:
-    """Write the report for runs [(name, output folder), ...] and manual count CSVs into `out`."""
+def build_report(
+    runs: list[tuple[str, Path | list[Path]]], manual_files: list[Path], out: Path, iou: float = 0.5
+) -> ReportResult:
+    """Write the report for runs [(name, output folder or folders), ...] and manual count CSVs into `out`."""
     if not runs:
         raise RecapError("give at least one run folder")
     if len({n for n, _ in runs}) != len(runs):

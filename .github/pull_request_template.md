@@ -11,7 +11,7 @@
 - [ ] New feature: library function first, then the command, then the button (CONTRIBUTING.md)
 - [ ] Counts may change (segmentation, filters, measurement): example workspace before / after: ___ / ___ (expect 472 / 248)
 - [ ] Database table changed: migration added (`pixi run db-revision`) and checked
-- [ ] No images, counts, results or `recap-data/` committed
+- [ ] No images, counts, results, `raw/`, `processed/` or `recap-data/` committed
 
 ## Tested on
 

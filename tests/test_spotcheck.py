@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from helpers import BASE, run_cli, summary  # noqa: F401
+from helpers import BASE, run_cli, runs, summary  # noqa: F401
 from recap import fijicount
 
 
@@ -30,7 +30,7 @@ def test_spot_check_save_then_reuse(write_config, synth_dir, monkeypatch):
         "validation: {enabled: true, sample_size: 3, seed: 7}\noutput: {directory: sc}\n"
     )
     assert run_cli("run", cfg, input="s\n").exit_code == 0  # "save counts" after the overview
-    out = synth_dir / "sc"
+    (out,) = runs(synth_dir)  # processed/runs/<date>/
     counts = pd.read_csv(next(out.glob("manual_counts_*.csv")))
     comp = pd.read_csv(next(out.glob("spot_check_*.csv")))
     assert len(counts) == 3 and FakeFiji.started == 4  # one skipped, replaced from the pool
@@ -39,4 +39,4 @@ def test_spot_check_save_then_reuse(write_config, synth_dir, monkeypatch):
     # running the workspace again reuses every count (kept in it): Fiji is not started, the batch runs ("r")
     FakeFiji.started = 0
     assert run_cli("run", synth_dir, input="r\n").exit_code == 0
-    assert FakeFiji.started == 0 and len(summary(out)) == 6
+    assert FakeFiji.started == 0 and len(summary(synth_dir)) == 6

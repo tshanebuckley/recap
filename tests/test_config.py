@@ -4,7 +4,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from helpers import BASE, run_cli, summary  # noqa: F401
+from helpers import BASE, img, run_cli, summary  # noqa: F401
 from recap import config
 
 
@@ -15,7 +15,8 @@ def test_template_round_trip(synth_dir, tmp_path_factory):
     res = run_cli("validate", cfg)  # a settings file on its own: checked, with how to start a workspace
     assert res.exit_code == 0 and "recap init FOLDER --from" in res.output
     assert run_cli("init", synth_dir, "--from", cfg).exit_code == 0
-    (synth_dir / ".recapignore").write_text("data/img6.tif\n", encoding="utf-8")
+    assert (synth_dir / "raw" / "unbatched" / "img6.tif").is_file()  # init put the images into raw/
+    assert run_cli("ignore", img(synth_dir, "img6.tif")).exit_code == 0
     res = run_cli("validate", synth_dir)
     assert res.exit_code == 0 and "5 image(s) found, 1 ignored" in res.output
 

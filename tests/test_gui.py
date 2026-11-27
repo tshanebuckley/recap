@@ -8,7 +8,7 @@ import sys
 import numpy as np
 import pytest
 
-from helpers import make_ws, run_cli
+from helpers import img, make_ws, run_cli
 from recap import desktop
 
 
@@ -20,11 +20,11 @@ def test_view_from_workspace(synth_dir):
 
     ws = Workspace(make_ws(synth_dir))
     ws.scan()
-    sha = file_sha256(synth_dir / "data" / "img1.tif")
+    sha = file_sha256(img(synth_dir, "img1.tif"))
     view = view_from_workspace(ws, sha)  # before a run: image only, with a hint
     assert view.labels is None and "Run selected" in view.messages[0]
     assert set(view.channels) == {"ICP8 (ch 1)", "DAPI (ch 0)"}  # named by the workspace's settings
-    assert run_cli("run", synth_dir, "-i", synth_dir / "data" / "img1.tif").exit_code == 0
+    assert run_cli("run", synth_dir, "-i", img(synth_dir, "img1.tif")).exit_code == 0
     view = view_from_workspace(ws, sha)
     assert view.labels is not None and view.labels.max() == 4  # 4 synthetic nuclei
     assert view.labels.shape == view.channels["DAPI (ch 0)"][0].shape and not view.messages

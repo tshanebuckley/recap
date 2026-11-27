@@ -175,8 +175,10 @@ def run_batch(
     progress: ProgressFn | None = None,
     cancel: Callable[[], bool] | None = None,
     settings_for: Callable[[Path], Any] | None = None,
+    image_dir: Callable[[Path], Path] | None = None,
 ) -> list[dict[str, Any]]:
-    """Process every image and write the per-image and batch outputs into out_dir.
+    """Process every image and write the per-image and batch outputs into out_dir (per-image
+    outputs into image_dir(path) instead, if given: a workspace's processed/.../<image>/).
 
     progress(i, n, path, info) is called after each image (info is that image's summary, or
     {"error": ...}); if cancel() returns True the batch stops before the next image and the
@@ -202,7 +204,9 @@ def run_batch(
                 progress(i, len(paths), p, images_log[-1])
             continue
         outputs = {}
-        stem = out_dir / p.stem
+        folder = image_dir(p) if image_dir is not None else out_dir
+        folder.mkdir(parents=True, exist_ok=True)
+        stem = folder / p.stem
         table = res.table.copy()
         table.insert(0, "image", p.name)
         table.to_csv(f"{stem}_nuclei.csv", index=False)

@@ -3,31 +3,36 @@
 import pandas as pd
 import yaml
 
-from helpers import BASE, run_cli, summary  # noqa: F401
+from helpers import BASE, run_cli, runs, summary  # noqa: F401
 
 
 # ----------------------------------------------------------------- full classical run
 def test_classical_run(write_config, synth_dir):
-    cfg = write_config(BASE + "output: {directory: out}\n")
+    cfg = write_config(BASE)
     assert run_cli("run", cfg).exit_code == 0
-    s = summary(synth_dir / "out").iloc[0]
+    s = summary(synth_dir).iloc[0]
     assert (s.n_nuclei, s.n_infected) == (4, 1)
-    out = synth_dir / "out"
-    for pattern in ("img1_nuclei.csv", "img1_labels.tif", "img1_qc.png", "run_log_*.yaml", "final_config_*.yaml"):
-        assert list(out.glob(pattern)), pattern
-    log = yaml.safe_load(next(out.glob("run_log_*.yaml")).read_text(encoding="utf-8"))
+    (run,) = runs(synth_dir)  # processed/runs/<date>/: the run's own files
+    for pattern in ("run_log_*.yaml", "final_config_*.yaml", "image_summary_*.csv", "run_*.log"):
+        assert list(run.glob(pattern)), pattern
+    own = synth_dir / "processed" / "unbatched" / "img1"  # the image's outputs, next to its raw file's place
+    assert (synth_dir / "raw" / "unbatched" / "img1.tif").is_file()
+    for name in ("img1_nuclei.csv", "img1_labels.tif", "img1_qc.png"):
+        assert (own / name).is_file(), name
+    log = yaml.safe_load(next(run.glob("run_log_*.yaml")).read_text(encoding="utf-8"))
     assert {"input_yaml", "validated_config", "final_config", "images"} <= set(log)
-    # the final config re-validates and reproduces the run
-    assert run_cli("validate", next(out.glob("final_config_*.yaml"))).exit_code == 0
+    assert log["images"][0]["outputs"]["labels"] == str(own / "img1_labels.tif")
+    # the final config re-validates (a starting point for another workspace)
+    assert run_cli("validate", next(run.glob("final_config_*.yaml"))).exit_code == 0
 
 
 def test_filters_and_exclusion_table(write_config, synth_dir):
-    cfg = write_config(BASE + "filters: {min_circularity: 0.8}\noutput: {directory: outf}\n")
+    cfg = write_config(BASE + "filters: {min_circularity: 0.8}\n")
     run_cli("run", cfg)
-    s = summary(synth_dir / "outf").iloc[0]
+    s = summary(synth_dir).iloc[0]
     # the notched infected nucleus fails a strict circularity cut and is reported, not silently lost
     assert s.n_nuclei + s.n_filtered == 4 and s.n_excluded_irregular >= 1
-    ex = pd.read_csv(synth_dir / "outf" / "img1_excluded.csv")
+    ex = pd.read_csv(synth_dir / "processed" / "unbatched" / "img1" / "img1_excluded.csv")
     assert ex.exclusion.str.contains("irregular").all()
 
 
@@ -37,8 +42,8 @@ def test_run_log_is_closed_after_a_run(write_config, synth_dir):
 
     from recap import run_pipeline
 
-    run_pipeline(write_config(BASE + "output: {directory: closed}\n"))
+    run_pipeline(write_config(BASE))
     assert not logging.getLogger("recap").handlers
     import shutil
 
-    shutil.rmtree(synth_dir / "closed")
+    shutil.rmtree(synth_dir / "processed" / "runs")

@@ -48,7 +48,8 @@ levels used (`settings`), what they changed (`overridden`) and why (`settings_re
 |---|---|
 | More > **Report: recap vs manual counts** (report.md opens) | `recap report` |
 
-The report goes to `recap-data/reports/<date>/`. `report.md` summarises it; `summary.csv` has,
+The report goes to `processed/reports/<date>/`. It compares the workspace's results (each
+image's latest run) and every comparison run with the manual counts. `report.md` summarises it; `summary.csv` has,
 per method, the total difference, the per-image bias with 95% limits of agreement, % VRC+ (recap
 vs manual) and, for counts with clicked points, missed / merged / extra nuclei.
 `inter_rater.csv` compares people who counted the same image. Images are matched by content, so
@@ -61,13 +62,17 @@ renamed copies still match.
 To compare StarDist with Cellpose on the same images without changing the workspace's results:
 
 ```bash
-pixi run -e cellpose recap run examples --settings examples/other_settings/cellpose.yaml   # -> examples/results_cellpose/
-recap report examples/results examples/results_cellpose -n stardist -n cellpose -m examples/recap-data/recap.db
-recap compare examples/results examples/results_cellpose               # image by image, with overlays
+pixi run -e cellpose recap run examples --settings examples/other_settings/cellpose.yaml
+#   -> examples/processed/comparisons/results_cellpose/
+recap report examples                 # recap (StarDist) and results_cellpose against the manual counts
+recap compare examples/processed/runs/<date> examples/processed/comparisons/results_cellpose   # overlays
 ```
 
 `--settings` makes a comparison run: the workspace's images (not the ignored ones), with their
 batch and image settings, but that file's settings in place of recap.yaml's own sections, into
-that file's output folder (relative to the workspace). There is no spot check, and the images'
-results and *up to date* state stay those of the workspace's own runs. Keep such files in a
-subfolder such as `other_settings/`.
+`processed/comparisons/<that file's output.directory>/` (one flat folder). There is no spot check,
+and the images' results and *up to date* state stay those of the workspace's own runs. Keep such
+files in a subfolder such as `other_settings/`.
+
+Each image's folder holds the outputs of its latest run only. To compare two settings of the
+workspace image by image, make one of them a comparison run.

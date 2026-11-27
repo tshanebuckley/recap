@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from helpers import BASE, make_ws, run_cli
+from helpers import BASE, img, make_ws, run_cli, runs
 from recap import fiji as fj
 from recap import fijicount
 
@@ -192,7 +192,7 @@ def test_spot_check_counts_in_fiji(write_config, synth_dir, monkeypatch):
     assert res.exit_code == 0, res.output
     import pandas as pd
 
-    counts = pd.read_csv(next((synth_dir / "sc").glob("manual_counts_*.csv")))
+    counts = pd.read_csv(next(runs(synth_dir)[-1].glob("manual_counts_*.csv")))
     assert len(counts) == 3 and set(counts.tool) == {"fiji"} and set(counts.counted_by) == {"ana"}
 
 
@@ -215,7 +215,7 @@ def test_count_command_stores_in_workspace(synth_dir, monkeypatch):
     from recap.workspace import Workspace
 
     assert default_counter_name() == "ana"  # remembered
-    run_cli("count", imgs[0], "--original")
+    assert run_cli("count", img(synth_dir, "img1.tif"), "--original").exit_code == 0  # (now in raw/unbatched/)
     assert calls[-1] == "img1.tif"
     counts = Workspace(synth_dir).counts()  # (the same image by the same person in the same second: kept once)
     assert {(c.nuclei, c.infected, c.counted_by, c.tool) for c in counts} == {(2, 1, "ana", "fiji")}

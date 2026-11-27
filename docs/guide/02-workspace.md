@@ -11,9 +11,10 @@
 | **New...** (or **Open...**), choose the folder with your images | `recap init path/to/images --from my_settings.yaml` |
 | If it has no settings yet: **Copy a settings file...** (recommended) or **Start from defaults** | `recap status path/to/images` |
 
-recap creates `recap.yaml` (every setting of the workspace) and `recap-data/`, then lists the
-images: every image in the folder, subfolders included. recap's own outputs (label images,
-`recap-data/`) are skipped; to leave out other images, see US-30. Next time the app opens this workspace directly, and
+recap creates `recap.yaml` (every setting of the workspace) and `recap-data/`, moves every image
+in the folder (subfolders included) into `raw/unbatched/`, and lists them. recap's own outputs
+(label images, `recap-data/`) are skipped; to leave out other images, see US-30; where everything
+goes, see US-31. Next time the app opens this workspace directly, and
 the **Workspace** list remembers recent ones.
 
 **Done when:** one row per image, state *not run*.
@@ -43,11 +44,11 @@ batch they belong to.*
 | Choose the batch: an existing one, **New batch...** (name, optional note) or *No batch*; **Add** | it asks the same; or `--batch "stain 2026-11-25"`, `--no-batch` |
 
 A folder is searched with its subfolders for TIFF images; recap's own outputs (label images,
-`recap-data/`) are skipped. Images from outside the workspace are **copied** into a subfolder
-named after the batch (`--to NAME` chooses another); your originals are not touched. Images
-already inside the workspace folder stay where they are. An image whose content is already in
-the workspace is not copied a second time, but it still goes into the batch you chose. The
-message says how many were added, copied and already there.
+`recap-data/`) are skipped. Images from outside the workspace are **copied** into
+`raw/batches/<batch>/` (`raw/unbatched/` with no batch); your originals are not touched. Images
+already inside the workspace folder are moved there. An image whose content is already in the
+workspace is not copied a second time, but it still goes into the batch you chose (and moves to
+its folder). The message says how many were added, copied and already there.
 
 **Done when:** the new images are in the table with the batch you chose, state *not run*; run
 them with **Run out-of-date** (or select them, **Run selected**).
@@ -55,14 +56,14 @@ them with **Run out-of-date** (or select them, **Run selected**).
 **Watch out for:**
 - A new staining day is a new batch. Adding its images to an older batch gives them that
   batch's settings, which may not suit them.
-- Copies take disk space; for very large folders, put the images into the workspace folder
-  yourself, More > **Rescan folder**, then **Set batch...**.
+- Copies take disk space; for very large folders, move the images into the workspace folder
+  yourself, More > **Rescan folder** (they go to `raw/unbatched/`), then **Set batch...**.
 - In a script, `recap add` needs `--batch` or `--no-batch` (it cannot ask).
 
 ## US-30 Leave images out of the workspace
 
 *As a lab member, I leave some images out of the workspace (and bring them back), without
-deleting or moving them.*
+deleting them.*
 
 | In the app | In a terminal |
 |---|---|
@@ -81,6 +82,44 @@ skips them, and stopping ignoring brings them back with their history.
 **Watch out for:** ignoring is for images that should not be analysed at all (wrong stain, test
 exports, duplicates). An image that is valid but weakly stained gets its own settings instead
 (US-15).
+
+## US-31 Find an image and everything made from it, by batch
+
+*As a lab member, I find each image's raw file and everything recap made from it in folders named
+after its staining batch, and they follow the image when its batch changes.*
+
+The workspace folder has two mirrored trees, one folder per batch in each:
+
+```
+raw/batches/stain 2026-10-03/day79_01.tif                    the image as acquired (never changed)
+processed/batches/stain 2026-10-03/day79_01/                 everything made from it:
+    day79_01_labels.tif  day79_01_nuclei.csv  day79_01_qc.png  day79_01_corrected_1.tif  ...
+raw/unbatched/ and processed/unbatched/                      images in no batch yet
+processed/runs/<date>/                                       each run's summary and run log
+processed/reports/<date>/                                    reports
+```
+
+There is nothing to do: recap moves files to match. Putting images in a batch (or another one,
+or none), renaming or deleting a batch moves their raw files and their folders in `processed/`;
+images added go straight into `raw/`; an image you drop anywhere else in the workspace folder is
+moved into `raw/unbatched/` at the next **Rescan folder** (or any run). Ignored images (US-30) are
+left where they are. Every move is listed in `recap-data/moves.csv`, and commands still accept
+an image's old path.
+
+A workspace from recap 5.0 or older is reorganized this way the first time recap 5.1 opens it:
+images from anywhere in the folder, outputs from the old `results/` folder, corrected masks from
+`recap-data/masks/`.
+
+**Done when:** after **Set batch...**, the image's raw file and its folder in `processed/` are in
+the new batch's folders; renaming the batch renames both folders; the image still opens with its
+outlines and corrected masks, and its counts and state are unchanged.
+
+**Watch out for:**
+- Do not rename or move files inside `raw/` and `processed/` by hand while the app is open; use
+  **Set batch...** and More > **Batches...**. (A file moved by hand is put back at the next scan.)
+- A file open in another program (Fiji, Excel) cannot be moved on Windows: recap leaves it and
+  moves it next time.
+- Keep the files you make yourself (notes, spreadsheets) outside `raw/` and `processed/`.
 
 ## US-06 Group images stained together into a batch
 

@@ -125,8 +125,9 @@ def init(
     recap.yaml holds the settings for every image in the folder (list images to leave out in
     .recapignore: recap ignore). Batches and single images can then change some values (recap
     settings set, or the app's Settings tab); those are written into recap.yaml too, under
-    batches: and images:. Starting from an existing settings file copies it; its output folder
-    is kept.
+    batches: and images:. The images are moved into raw/unbatched/ (raw/batches/<batch>/ once
+    they are in a batch), and recap's outputs go to processed/. Starting from an existing settings
+    file copies it.
     Example:
       recap init experiment --from old_settings.yaml
     """
@@ -176,16 +177,13 @@ def add(
     ] = Path("."),
     batch: Annotated[str | None, typer.Option(help="Put them in this staining batch (created if new).")] = None,
     no_batch: Annotated[bool, typer.Option("--no-batch", help="Add without a batch.")] = False,
-    to: Annotated[
-        str | None, typer.Option("--to", help="Subfolder to copy into (default: the batch's name, else 'images').")
-    ] = None,
     note: Annotated[str | None, typer.Option(help="Note for a new batch.")] = None,
 ) -> None:
     """Add images to a workspace: files, or every .tif / .tiff in folders (subfolders included).
 
     \b
-    Images from outside the workspace are copied into it (into a subfolder named after the batch,
-    or --to). Images whose content is already in the workspace are not copied again. Without
+    Images from outside the workspace are copied into raw/batches/<batch>/ (raw/unbatched/
+    without a batch). Images whose content is already in the workspace are not copied again. Without
     --batch or --no-batch, recap asks which staining batch they belong to (an existing one, a
     new one, or none). The app's Add images does the same.
     Examples:
@@ -207,7 +205,7 @@ def add(
         batch, ask_note = _ask_batch(ws, len(files))
         note = note or ask_note
     try:
-        res = ws.add_images(files, batch, to, note)
+        res = ws.add_images(files, batch, note)
     except RecapError as e:
         _fail(f"ERROR: {e}")
     typer.echo(res.message())
@@ -326,16 +324,17 @@ def run(
     \b
     Steps: optional manual spot check (validation.enabled: counts already in the workspace are
     reused, more images are counted in Fiji up to sample_size), then every image: segment,
-    measure, filter, call VRC+. Outputs go to output.directory: per-image tables, label images,
-    QC overlays, a batch summary with QC flags and count ranges, a run log, and a re-runnable final
-    config; the results are recorded in the workspace. See docs/output_columns.md for every column.
-    Images in the workspace's .recapignore are left out.
+    measure, filter, call VRC+. Each image's tables, label images and QC overlay go to its folder,
+    processed/batches/<batch>/<image>/ (or processed/unbatched/<image>/); the run's summary with QC
+    flags and count ranges, run log and final config go to processed/runs/<date>/. The results are
+    recorded in the workspace. See docs/output_columns.md for every column. Images in the
+    workspace's .recapignore are left out.
 
     \b
     Comparing methods: recap run FOLDER --settings other.yaml runs the same images (with their batch
-    and image settings) using other.yaml instead of recap.yaml's own sections, into other.yaml's
-    output.directory, without the spot check and without replacing the images' results. Then:
-      recap report FOLDER/results FOLDER/results_other -m FOLDER/recap-data/recap.db
+    and image settings) using other.yaml instead of recap.yaml's own sections, into
+    processed/comparisons/<other.yaml's output.directory>/, without the spot check and without
+    replacing the images' results. Then recap report FOLDER compares it with the workspace's results.
     """
     from recap.fijicount import FijiCounter, FijiSession
     from recap.io import file_sha256
@@ -361,7 +360,8 @@ def run(
         if out_of_date:
             ws.scan()
             stale = set(ws.out_of_date())
-            images = [p for p in (images or ws.images(cfg)) if file_sha256(p) in stale]
+            images = [ws.current_path(p) for p in (images or ws.images(cfg))]
+            images = [p for p in images if file_sha256(p) in stale]
             if not images:
                 typer.echo("Every image is up to date.")
                 return
@@ -431,7 +431,6 @@ def count(
     """
     from recap.counting import COUNTER_HELP, count_in_fiji, fiji_session
     from recap.counts import default_counter_name, remember_counter_name
-    from recap.io import file_sha256
 
     ws = _ws(images[0])
     if remember and by:
@@ -446,7 +445,7 @@ def count(
     added = 0
     try:
         for k, img in enumerate(images, 1):
-            out = count_in_fiji(ws, file_sha256(img), session, by, lambda q: typer.confirm(q, default=True),
+            out = count_in_fiji(ws, ws.sha_of(img), session, by, lambda q: typer.confirm(q, default=True),
                                 original, not no_infection, f"image {k} of {len(images)}")  # fmt: skip
             if out.status == "cancel":
                 typer.echo("Stopped.")
@@ -577,15 +576,16 @@ def report(
         ),
     ] = None,  # fmt: skip
     out: Annotated[
-        Path | None, typer.Option("--out", "-o", help="Report folder (default: recap-data/reports/<date>).")
+        Path | None, typer.Option("--out", "-o", help="Report folder (default: processed/reports/<date>).")
     ] = None,
     iou: Annotated[float, typer.Option(min=0.05, max=1.0, help="Min overlap to match nuclei.")] = 0.5,
 ) -> None:
     """Compare recap's counts with the manual counts across all images.
 
     \b
-    For a workspace: every run folder in it against every manual count in it (the app: More > Report).
-    For run folders (e.g. StarDist vs Cellpose): recap report results results_cellpose -m recap.db
+    For a workspace: its results (each image's latest run) and each comparison run against every
+    manual count in it (the app: More > Report).
+    For run folders: recap report processed/runs/DATE processed/comparisons/NAME -m recap-data/recap.db
     Writes program_counts.csv, vs_manual.csv (per image, method and counter), method_agreement.csv,
     inter_rater.csv, summary.csv (bias, limits of agreement, VRC+ agreement, missed/merged/extra),
     plots, and report.md. Manual counts match images by file content, not name.
@@ -629,7 +629,8 @@ def compare(
 
     Reports counts, matched nuclei and VRC+ agreement.
 
-    Typical use: StarDist vs Cellpose.
+    Typical use: StarDist vs Cellpose, i.e. a run of the workspace (processed/runs/DATE) and a
+    comparison run (processed/comparisons/NAME); each image's files are found through the run log.
     Per image: counts and VRC+ calls of both runs, nuclei found by both (matched by overlap),
     nuclei found by only one, infection agreement on matched nuclei, and an overlay PNG
     (run A magenta, run B green). For many images and manual counts, use `recap report`.
@@ -720,10 +721,9 @@ WorkspaceOpt = Annotated[
 
 
 def _shas(ws, images: list[Path]) -> list[str]:
-    from recap.io import file_sha256
 
     ws.scan()
-    return [file_sha256(p) for p in images]
+    return [ws.sha_of(p) for p in images]
 
 
 @batch_app.command("assign")
@@ -732,7 +732,9 @@ def batch_assign(
     images: Annotated[list[Path], typer.Argument(exists=True, dir_okay=False, help="Images in this batch.")],
     note: Annotated[str | None, typer.Option(help="Note for a new batch.")] = None,
 ) -> None:
-    """Put images in a staining batch (an image is in at most one)."""
+    """Put images in a staining batch (an image is in at most one).
+
+    Their raw files move to raw/batches/<batch>/ and their outputs to processed/batches/<batch>/."""
     ws = _ws(images[0], settings=False)
     ws.assign_batch(_shas(ws, images), name, note)
     typer.echo(f"{len(images)} image(s) in batch {name!r}.")
@@ -790,13 +792,12 @@ def _parse_pairs(pairs: list[str]) -> dict:
 
 
 def _level(ws, batch: str | None, image: Path | None) -> tuple[str, str, str]:
-    from recap.io import file_sha256
 
     if batch and image:
         _fail("Give --batch or --image, not both.")
     if image:
         ws.scan()
-        return "image", file_sha256(image), str(image)
+        return "image", ws.sha_of(image), str(image)
     if batch:
         if batch not in {b["name"] for b in ws.batches()}:
             _fail(f"No batch {batch!r} (recap batch list).")
@@ -867,13 +868,12 @@ def settings_clear(
 @settings_app.command("show")
 def settings_show(image: Annotated[Path, typer.Argument(exists=True, dir_okay=False)]) -> None:
     """An image's effective settings: what differs from recap.yaml, and which level set it."""
-    from recap.io import file_sha256
     from recap.levels import get_path
 
     ws = _ws(image)
     ws.scan()
     base = ws.settings()
-    r = ws.resolve(file_sha256(image), base)
+    r = ws.resolve(ws.sha_of(image), base)
     typer.echo(f"{image.name}: {r.label}" + (f"   batch: {r.batch}" if r.batch else ""))
     if r.reason:
         typer.echo(f"reason for its own settings: {r.reason}")

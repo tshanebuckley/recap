@@ -2,7 +2,7 @@
 
 How to use recap from start to finish, for the lab and for the undergrads who test and develop
 it. Each page follows one stage of the workflow and is organised by the **user stories** of the
-test plan (US-01 to US-30): what you want to do, how to do it in the app and in a terminal, how
+test plan (US-01 to US-31): what you want to do, how to do it in the app and in a terminal, how
 to tell it worked, and what tends to go wrong.
 
 ```mermaid
@@ -28,7 +28,7 @@ go back to counting and correcting whenever the settings change.
 | Stage | Page | Stories |
 |---|---|---|
 | 1. Get started | [Install, open the app, set up Fiji](01-get-started.md) | US-01 to US-04 |
-| 2. Set up the workspace | [Your folder of images, adding or leaving out images, staining batches](02-workspace.md) | US-05, US-29, US-30, US-06 |
+| 2. Set up the workspace | [Your folder of images, adding or leaving out images, where files live, staining batches](02-workspace.md) | US-05, US-29, US-30, US-31, US-06 |
 | 3. First pass and manual counts | [Run, look, count, correct](03-first-pass.md) | US-07 to US-12 |
 | 4. Guided settings | [Settings for a batch or one image, with a live preview](04-guided-settings.md) | US-13 to US-16 |
 | 5. Tuning | [Let recap find better settings](05-tuning.md) | US-17 |
@@ -39,11 +39,12 @@ go back to counting and correcting whenever the settings change.
 
 ## Three things to know first
 
-1. **A workspace is a folder of images.** recap adds one settings file, `recap.yaml` (every
-   setting: the workspace's, each batch's, each single image's), and one folder, `recap-data/`
-   (with the database `recap.db`: runs, counts, corrected outlines, which image is in which
-   batch, model versions). An optional `.recapignore` lists images to leave out. Copy the folder
-   and you copy all of it.
+1. **A workspace is a folder of images.** The images are in `raw/`, everything recap makes from
+   them in `processed/`, both with a folder per staining batch (`batches/<batch>/`). recap adds
+   one settings file, `recap.yaml` (every setting: the workspace's, each batch's, each single
+   image's), and one folder, `recap-data/` (with the database `recap.db`: runs, counts, which
+   image is in which batch, model versions). An optional `.recapignore` lists images to leave
+   out. Copy the folder and you copy all of it.
 2. **The app and the terminal are the same program.** Every button calls the same code as a
    command (the table in [`docs/gui.md`](../gui.md) lists them), and both read and write the
    same workspace. Use whichever you like; mix them freely.

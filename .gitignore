@@ -17,6 +17,9 @@ dist/
 *.lif
 *.nd2
 recap-data/
+raw/
+processed/
+.recapignore
 results*/
 report/
 compare/

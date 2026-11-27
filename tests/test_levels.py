@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from helpers import BASE, make_ws, run_cli
+from helpers import BASE, img, make_ws, run_cli, runs
 from recap.config import load_config
 from recap.errors import ConfigError, RecapError
 from recap.io import file_sha256
@@ -39,36 +39,42 @@ def test_most_specific_level_wins(write_config):
     assert r.overridden == ["filters.min_focus", "measurement.vrc_threshold"]
 
 
-def _summary(out):
-    df = pd.read_csv(next(out.glob("image_summary_*.csv")))
+def _summary(run):
+    df = pd.read_csv(next(run.glob("image_summary_*.csv")))
     return df.assign(image=df.image.map(lambda x: Path(x).name)).set_index("image")
 
 
 def test_run_applies_levels_and_marks_them(write_config, synth_dir):
-    d = synth_dir / "data"
-    write_config("input: {}\nnormalization: {vrc_range: [150, 3000]}\noutput: {directory: plain}\n")
-    assert run_cli("run", synth_dir, *[x for i in (1, 2, 3) for x in ("-i", d / f"img{i}.tif")]).exit_code == 0
-    plain = pd.read_csv(next((synth_dir / "plain").glob("image_summary_*.csv")))
+    write_config("input: {}\nnormalization: {vrc_range: [150, 3000]}\n")
+    three = [x for i in (1, 2, 3) for x in ("-i", img(synth_dir, f"img{i}.tif"))]
+    assert run_cli("run", synth_dir, *three).exit_code == 0
+    (plain_run,) = runs(synth_dir)
+    plain = pd.read_csv(next(plain_run.glob("image_summary_*.csv")))
     assert set(plain.settings) == {"workspace"}  # no batch or image settings yet
     make_ws(synth_dir)
-    assert run_cli("batch", "assign", "stain A", d / "img1.tif", d / "img2.tif").exit_code == 0
+    assert run_cli("batch", "assign", "stain A", img(synth_dir, "img1.tif"), img(synth_dir, "img2.tif")).exit_code == 0
     assert run_cli("settings", "set", "--batch", "stain A", "filters.min_area=100000", "-w", synth_dir).exit_code == 0
-    res = run_cli("settings", "set", "--image", d / "img2.tif", "filters.min_area=null")
+    res = run_cli("settings", "set", "--image", img(synth_dir, "img2.tif"), "filters.min_area=null")
     assert res.exit_code == 1 and "reason" in res.output  # an image needs a reason
-    res = run_cli("settings", "set", "--image", d / "img2.tif", "filters.min_area=null", "--reason", "weak DAPI")
+    res = run_cli(
+        "settings", "set", "--image", img(synth_dir, "img2.tif"), "filters.min_area=null", "--reason", "weak DAPI"
+    )
     assert res.exit_code == 0
     import yaml
 
     doc = yaml.safe_load((synth_dir / "recap.yaml").read_text(encoding="utf-8"))  # every level is in recap.yaml
     assert doc["batches"] == {"stain A": {"filters": {"min_area": 100000}}}
-    assert doc["images"]["data/img2.tif"]["reason"] == "weak DAPI"
-    assert doc["images"]["data/img2.tif"]["filters"] == {"min_area": None}
-    out = run_cli("settings", "show", d / "img2.tif")
+    key = "raw/batches/stain A/img2.tif"  # the image moved with its batch: its entry follows it
+    assert img(synth_dir, "img2.tif") == synth_dir / key
+    assert doc["images"][key]["reason"] == "weak DAPI"
+    assert doc["images"][key]["filters"] == {"min_area": None}
+    out = run_cli("settings", "show", img(synth_dir, "img2.tif"))
     assert "batch: stain A" in out.output and "weak DAPI" in out.output and "set by image" in out.output
-    assert run_cli("run", synth_dir, "-i", d / "img1.tif", "-i", d / "img2.tif", "-i", d / "img3.tif").exit_code == 0
-    s = _summary(synth_dir / "out")
+    three = [x for i in (1, 2, 3) for x in ("-i", img(synth_dir, f"img{i}.tif"))]
+    assert run_cli("run", synth_dir, *three).exit_code == 0
+    s = _summary(runs(synth_dir)[-1])
     assert s.loc["img1.tif", "n_nuclei"] == 0  # the batch's min_area removes everything
-    assert s.loc["img2.tif", "n_nuclei"] == _summary(synth_dir / "plain").loc["img2.tif", "n_nuclei"]  # image undoes it
+    assert s.loc["img2.tif", "n_nuclei"] == _summary(plain_run).loc["img2.tif", "n_nuclei"]  # image undoes it
     assert s.loc["img1.tif", "settings"] == "workspace + batch:stain A"
     assert s.loc["img2.tif", "settings"] == "workspace + batch:stain A + image"
     assert s.loc["img2.tif", "settings_reason"] == "weak DAPI" and s.loc["img2.tif", "overridden"] == "filters.min_area"
@@ -90,25 +96,23 @@ def test_run_applies_levels_and_marks_them(write_config, synth_dir):
     ws.set_level_settings("batch", "stain A", {})
     ws.set_level_settings("image", rows["img2.tif"]["sha256"], {})
     assert "batches" not in (synth_dir / "recap.yaml").read_text(encoding="utf-8")
-    assert run_cli("run", synth_dir, "-i", d / "img1.tif", "-i", d / "img2.tif").exit_code == 0
-    latest = sorted((synth_dir / "out").glob("image_summary_*.csv"))[-1]
-    assert set(pd.read_csv(latest).settings) == {"workspace"}
+    assert run_cli("run", synth_dir, "-i", img(synth_dir, "img1.tif"), "-i", img(synth_dir, "img2.tif")).exit_code == 0
+    assert set(_summary(runs(synth_dir)[-1]).settings) == {"workspace"}
 
 
 def test_settings_unset_clear_and_workspace_level(synth_dir):
     make_ws(synth_dir, "filters: {min_focus: 0.5}  # keep me\n")
-    d = synth_dir / "data"
     assert run_cli("settings", "set", "filters.min_focus=0.7", "-w", synth_dir).exit_code == 0
     text = (synth_dir / "recap.yaml").read_text(encoding="utf-8")
     assert "min_focus: 0.7" in text and "# keep me" in text  # written into recap.yaml, comments kept
-    run_cli("batch", "assign", "B", d / "img1.tif")
+    run_cli("batch", "assign", "B", img(synth_dir, "img1.tif"))
     run_cli("settings", "set", "--batch", "B", "filters.min_area=50", "filters.max_area=900", "-w", synth_dir)
     assert run_cli("settings", "unset", "filters.min_area", "--batch", "B", "-w", synth_dir).exit_code == 0
     ws = Workspace(synth_dir)
     assert ws.level_settings("batch", "B") == {"filters.max_area": 900}
-    run_cli("settings", "set", "--image", d / "img1.tif", "filters.min_area=5", "--reason", "x")
-    assert run_cli("settings", "clear", "--image", d / "img1.tif").exit_code == 0
-    assert ws.level_settings("image", file_sha256(d / "img1.tif")) == {}
+    run_cli("settings", "set", "--image", img(synth_dir, "img1.tif"), "filters.min_area=5", "--reason", "x")
+    assert run_cli("settings", "clear", "--image", img(synth_dir, "img1.tif")).exit_code == 0
+    assert ws.level_settings("image", file_sha256(img(synth_dir, "img1.tif"))) == {}
     assert run_cli("batch", "rename", "B", "C", "-w", synth_dir).exit_code == 0
     assert ws.level_settings("batch", "C") == {"filters.max_area": 900}
     assert run_cli("batch", "delete", "C", "-w", synth_dir).exit_code == 0
@@ -119,7 +123,7 @@ def test_save_effective_stores_only_differences(synth_dir):
     make_ws(synth_dir)
     ws = Workspace(synth_dir)
     ws.scan()
-    sha = file_sha256(synth_dir / "data" / "img1.tif")
+    sha = file_sha256(img(synth_dir, "img1.tif"))
     ws.assign_batch([sha], "B")
     cfg = ws.resolve(sha).cfg.model_copy(deep=True)
     cfg.filters.min_area = 40
@@ -140,4 +144,4 @@ def test_model_cannot_vary_by_level(synth_dir):
     with pytest.raises(ConfigError):
         ws.set_level_settings("batch", "B", {"segmentation.stardist_model": "other"})
     with pytest.raises(RecapError, match="reason"):
-        ws.set_level_settings("image", file_sha256(synth_dir / "data" / "img1.tif"), {"filters.min_focus": 0.5})
+        ws.set_level_settings("image", file_sha256(img(synth_dir, "img1.tif")), {"filters.min_focus": 0.5})

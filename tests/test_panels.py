@@ -8,7 +8,7 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 QtWidgets = pytest.importorskip("qtpy.QtWidgets")
 
-from helpers import make_ws, run_cli  # noqa: E402
+from helpers import img, make_ws, run_cli  # noqa: E402
 from recap.gui import common, panels  # noqa: E402
 from recap.io import file_sha256  # noqa: E402
 from recap.workspace import Workspace  # noqa: E402
@@ -56,7 +56,7 @@ def app():
 @pytest.fixture
 def ws(synth_dir, monkeypatch):
     make_ws(synth_dir)
-    assert run_cli("run", synth_dir, "-i", synth_dir / "data" / "img1.tif").exit_code == 0
+    assert run_cli("run", synth_dir, "-i", img(synth_dir, "img1.tif")).exit_code == 0
     monkeypatch.setattr(common, "STATE", common.SharedState())
     monkeypatch.setattr(common, "run_in_background", lambda fn, done, err, bridge=None: done(fn()))
     monkeypatch.setattr(common, "counter_name", lambda parent, ask=False: "ana")
@@ -163,7 +163,7 @@ def test_batches_guided_save_and_out_of_date(app, ws, monkeypatch):
     g.rows["filters.min_area"].use.setChecked(False)
     g.level.setCurrentIndex(g.level.findData("image"))
     g.save()
-    sha = file_sha256(ws / "data" / "img1.tif")
+    sha = file_sha256(img(ws, "img1.tif"))
     assert w.level_settings("image", sha) == {"filters.min_area": None} and w.level_reason(sha) == "weak DAPI"
     assert g.rows["filters.min_area"].source_full == "image" and g.clear_btn.isEnabled()
     g.clear_image()
@@ -182,10 +182,10 @@ def test_more_menu_import_report_and_dialogs(app, ws, monkeypatch):
     p.import_counts()
     assert "Imported: 4 nuclei" in p.msg.text()
     p.make_report()
-    assert "Report written" in p.msg.text() and list((ws / "recap-data" / "reports").glob("*/report.md"))
+    assert "Report written" in p.msg.text() and list((ws / "processed" / "reports").glob("*/report.md"))
     from recap.gui.dialogs import BatchesDialog, FijiDialog
 
-    Workspace(ws).assign_batch([file_sha256(ws / "data" / "img1.tif")], "B")
+    Workspace(ws).assign_batch([file_sha256(img(ws, "img1.tif"))], "B")
     d = BatchesDialog(Workspace(ws))
     assert d.t.rowCount() == 1 and d.t.item(0, 0).text() == "B"
     assert "Fiji" in FijiDialog(Workspace(ws)).info.text()

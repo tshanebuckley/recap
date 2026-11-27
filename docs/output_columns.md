@@ -3,6 +3,14 @@
 Every CSV that recap (Reconstruction of Cellular Architecture and Phenotypes) writes, column by column. `tests/test_docs.py` fails if a file gains or
 loses a column without this page being updated.
 
+Where the files are (in a workspace; see the README's *Workspaces*): per image in
+`processed/batches/<batch>/<image>/` (or `processed/unbatched/<image>/`): `<image>_nuclei.csv`,
+`<image>_excluded.csv`, `<image>_merges.csv`; per run in `processed/runs/<date>/`:
+`all_nuclei_<stamp>.csv`, `image_summary_<stamp>.csv`, `spot_check_<stamp>.csv`,
+`manual_counts_<stamp>.csv`; `recap report` in `processed/reports/<date>/`; `recap compare` where
+`--out` says. A comparison run (`recap run --settings`) writes all of its files into
+`processed/comparisons/<name>/`.
+
 Conventions
 
 - **infected = VRC+**: a nucleus with detectable viral replication compartments (ICP8 above

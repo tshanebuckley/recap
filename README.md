@@ -1,4 +1,4 @@
-# recap 5.0.0
+# recap 5.1.0
 
 **recap: Reconstruction of Cellular Architecture and Phenotypes**
 
@@ -162,7 +162,7 @@ conda env create -f environment.yml && conda activate recap && pip install -e ".
 Copy `Experiment_Hippoc_org_day_79_Acute_VimentinR_ICP8_G.tif` into `examples/` and run:
 
 ```bash
-recap run examples                                       # results in examples/results/
+recap run examples       # moves the image to examples/raw/unbatched/; results in examples/processed/
 recap init path/to/images --from examples/recap.yaml     # your own images: a new workspace
 recap run path/to/images
 ```
@@ -185,8 +185,9 @@ A typical comparison of StarDist, Cellpose and manual counting:
 
 ```bash
 # 1. run both methods on the same images
-pixi run recap run examples                                            # -> examples/results/
-pixi run -e cellpose recap run examples --settings examples/other_settings/cellpose.yaml   # -> examples/results_cellpose/
+pixi run recap run examples                 # -> examples/processed/runs/<date>/ and processed/.../<image>/
+pixi run -e cellpose recap run examples --settings examples/other_settings/cellpose.yaml
+                                            # -> examples/processed/comparisons/results_cellpose/
 
 # 2. count by hand: recap opens Fiji; counts go into examples/recap-data/recap.db
 recap count examples/*.tif --by ana --remember
@@ -195,7 +196,7 @@ recap import-counts examples/img01.tif img01_markers.xml --by ben      # Cell Co
 recap import-counts examples/img02.tif --nuclei 472 --vrc-pos 240     # totals only
 
 # 3. report: every run folder of the workspace against every manual count in it
-recap report examples                 # -> examples/recap-data/reports/<date>/ (the app: More > Report)
+recap report examples                 # -> examples/processed/reports/<date>/ (the app: More > Report)
 ```
 
 `report.md` summarises it; `summary.csv` has, per method, the total difference, the
@@ -252,20 +253,57 @@ See `config_template.yaml` (or `recap template`) for every key with comments.
 | `filters` | `min_focus`, `min_circularity`, `min_area` / `max_area`, `exclude_border` + `border_max_missing` |
 | `qc` | warning thresholds and count-range steps |
 | `validation` | random manual spot check counted in Fiji, reuse of earlier counts, `fiji` location |
-| `output` | output folder, label images, QC images |
+| `output` | label images, QC images; the folder of a comparison run (`recap run --settings`) |
 
 ## Outputs
 
-Per run, in `output.directory`: `<image>_nuclei.csv`, `<image>_excluded.csv`, label images,
-`<image>_qc.png` (white = VRC−, red = VRC+, blue = excluded), `image_summary_*.csv`,
-`all_nuclei_*.csv`, `run_log_*.yaml` (settings as written / validated / applied, versions,
-hashes, the list of images), and `final_config_*.yaml` (the settings applied: start a workspace
-from it with `recap init FOLDER --from`, or rerun them with `recap run FOLDER --settings`). Every column is
-described in [`docs/output_columns.md`](docs/output_columns.md).
+In the workspace's `processed/` folder (see [Workspaces](#workspaces)):
+
+- per image, in `processed/batches/<batch>/<image>/` (or `processed/unbatched/<image>/`):
+  `<image>_nuclei.csv`, `<image>_excluded.csv`, label images, `<image>_qc.png` (white = VRC−,
+  red = VRC+, blue = excluded), and corrected masks (`<image>_corrected_<N>.tif`). These are the
+  image's latest results: a new run replaces them.
+- per run, in `processed/runs/<date_time>/`: `image_summary_*.csv`, `all_nuclei_*.csv`,
+  `run_log_*.yaml` (settings as written / validated / applied, versions, hashes, every image and
+  output file), `final_config_*.yaml` (the settings applied: start a workspace from it with
+  `recap init FOLDER --from`, or rerun them with `recap run FOLDER --settings`), the spot check's
+  files and the log.
+- a comparison run (`recap run --settings FILE`): everything in one folder,
+  `processed/comparisons/<FILE's output.directory>/`, kept apart from the images' results.
+
+Every column is described in [`docs/output_columns.md`](docs/output_columns.md).
 
 ## Workspaces
 
-A workspace is a folder of images (anywhere below it) with:
+A workspace is a folder with this layout. Raw images and everything recap makes from them are in
+two mirrored trees, each with a folder per staining batch:
+
+```
+my-experiment/
+  recap.yaml
+  .recapignore                       (optional)
+  raw/                               the images as acquired; recap never changes them
+    batches/
+      stain 2026-10-03/
+        day79_01.tif
+        day79_02.tif
+    unbatched/                       images in no batch yet
+  processed/                         everything recap makes from them
+    batches/
+      stain 2026-10-03/
+        day79_01/                    day79_01_labels.tif, _nuclei.csv, _qc.png, _corrected_1.tif, ...
+    unbatched/
+    runs/<date_time>/                run log, summaries, spot check
+    comparisons/<name>/              comparison runs (recap run --settings)
+    reports/<date_time>/             recap report
+  recap-data/                        database, model versions, tuning, Fiji sessions, backups
+```
+
+recap keeps it that way: putting an image in a batch (or another batch, or none), renaming or
+deleting a batch moves its raw files and its folders in `processed/` to match; images added with
+**Add images** / `recap add` are copied straight into `raw/`; an image dropped anywhere else in the
+folder is moved into `raw/unbatched/` at the next scan. Ignored images stay where they are. Every
+move is listed in `recap-data/moves.csv`, and commands accept an image's old path.
 
 - `recap.yaml`: every setting of the workspace. Its sections are the settings for every image;
   at the end, `batches:` and `images:` hold what a staining batch or a single image changes
@@ -274,15 +312,18 @@ A workspace is a folder of images (anywhere below it) with:
   (`recap ignore` / `unignore`, or Ignore in the app). Ignored images keep their counts and masks
   but are not run, counted, tuned or trained on.
 - `recap-data/recap.db`: an SQLite index of images, runs, manual counts, corrected masks, which
-  image is in which batch, model versions and tuning results; plus `masks/`, `models/`,
-  `tuning/`, `reports/`, `fiji/` and `backups/`.
+  image is in which batch, model versions and tuning results; plus `models/`, `tuning/`,
+  `fiji/`, `backups/` and `moves.csv`.
 
 Images are identified by content, and paths are stored relative to the folder, so the folder can
 be moved or shared. Make one with `recap init FOLDER [--from settings.yaml]` or the app's
 **New...**; a folder used with recap 4.2 (a `recap-data/` but no `recap.yaml`) is made a workspace
 the same way. Settings that older versions kept in the database (4.2: workspace-wide; 4.3 and
 4.4: batches and single images) move into `recap.yaml` when recap 5.0 opens the workspace, and an
-old `input.images` list becomes `.recapignore` lines for the images it left out. When a
+old `input.images` list becomes `.recapignore` lines for the images it left out. recap 5.1
+reorganizes an older workspace into `raw/` and `processed/` the first time it opens it (images
+from anywhere in the folder, run outputs from the old flat `results/` folder, corrected masks from
+`recap-data/masks/`; run logs and the database are updated to match). When a
 newer recap opens a workspace, it first copies `recap.db` to
 `recap-data/backups/recap_v<old version>_<date>_<time>.db`, then upgrades it; an older recap
 refuses to open a workspace used by a newer one.

@@ -46,6 +46,25 @@ def run_images(folder: Path) -> list[Path]:
     return [Path(p) for p in (raw.get("input") or {}).get("images") or []]
 
 
+def run_outputs(folder: Path) -> dict[str, dict[str, Path]]:
+    """Per-image output files of a run folder's latest run, by image path: the outputs its run log
+    lists (in a workspace they are in each image's own folder), else <stem>_labels.tif ... in the
+    folder itself (older runs)."""
+    try:
+        rl = yaml.safe_load(latest(folder, "run_log_*.yaml").read_text(encoding="utf-8")) or {}
+    except RecapError:
+        rl = {}
+    listed = {d["image"]: {k: Path(v) for k, v in d.get("outputs", {}).items()}
+              for d in rl.get("images") or [] if "image" in d}  # fmt: skip
+    out = {}
+    for p in run_images(folder):
+        files = listed.get(str(p)) or {}
+        flat = {"labels": f"{p.stem}_labels.tif", "table": f"{p.stem}_nuclei.csv",
+                "excluded_labels": f"{p.stem}_excluded_labels.tif"}  # fmt: skip
+        out[str(p)] = {k: files.get(k) or folder / name for k, name in flat.items()}
+    return out
+
+
 def match(a: np.ndarray, b: np.ndarray, iou_min: float) -> list[tuple[int, int, float]]:
     """Greedy one-to-one matching of labels by IoU."""
     m = (a > 0) & (b > 0)
@@ -78,15 +97,20 @@ def compare_runs(
     sa = pd.read_csv(latest(run_a, "image_summary_*.csv"))
     sb = pd.read_csv(latest(run_b, "image_summary_*.csv"))
 
+    files_a = {Path(k).stem: v for k, v in run_outputs(run_a).items()}
+    files_b = {Path(k).stem: v for k, v in run_outputs(run_b).items()}
     rows = []
     for stem, path in images.items():
-        la_p, lb_p = run_a / f"{stem}_labels.tif", run_b / f"{stem}_labels.tif"
+        if stem not in files_b:
+            print(f"skipping {stem}: not in {run_b}")
+            continue
+        la_p, lb_p = files_a[stem]["labels"], files_b[stem]["labels"]
         if not (la_p.exists() and lb_p.exists()):
             print(f"skipping {stem}: labels missing in one run")
             continue
         la, lb = tifffile.imread(la_p), tifffile.imread(lb_p)
-        ta = pd.read_csv(run_a / f"{stem}_nuclei.csv").set_index("label")
-        tb = pd.read_csv(run_b / f"{stem}_nuclei.csv").set_index("label")
+        ta = pd.read_csv(files_a[stem]["table"]).set_index("label")
+        tb = pd.read_csv(files_b[stem]["table"]).set_index("label")
         pairs = match(la, lb, iou)
         agree = [bool(ta.at[p, "infected"]) == bool(tb.at[q, "infected"]) for p, q, _ in pairs]
         ra = sa[sa.image.map(lambda s: Path(s).stem) == stem].iloc[0]

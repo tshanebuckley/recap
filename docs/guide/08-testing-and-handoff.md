@@ -18,7 +18,7 @@ The test plan is a shared sheet with three tabs:
    fixed first) or **N/A** (does not apply to this computer).
 4. For a Fail, add a row on **Defects**: the story ID, your system (Windows / Mac, version),
    what you did, what happened, what you expected, and the run log
-   (`results/run_<date>.log`) or a screenshot.
+   (`processed/runs/<date>/run_<date>.log`) or a screenshot.
 
 Defects can also be reported as GitHub issues: **New issue > Defect** asks for the same fields.
 Do not attach unpublished images or counts to an issue.

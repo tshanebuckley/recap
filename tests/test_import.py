@@ -3,7 +3,7 @@
 import pandas as pd
 import pytest
 
-from helpers import run_cli
+from helpers import run_cli, runs
 from recap import fijicount
 from recap.counts import load_manual_counts, read_manual_counts
 from recap.errors import RecapError
@@ -131,7 +131,7 @@ def test_imported_counts_reused_by_spot_check(write_config, synth_dir, monkeypat
     )
     res = run_cli("run", cfg, input="s\n")
     assert res.exit_code == 0
-    comp = pd.read_csv(next((synth_dir / "reuse").glob("spot_check_*.csv")))
+    comp = pd.read_csv(next(runs(synth_dir)[-1].glob("spot_check_*.csv")))
     assert list(comp.manual_nuclei) == [4, 4] and list(comp.missed) == [0, 0]
 
 

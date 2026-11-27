@@ -2,33 +2,32 @@
 
 import pandas as pd
 
-from helpers import run_cli
+from helpers import img, run_cli, runs
 from test_import import CENTRES, cell_counter_xml
 
 
 def test_report_end_to_end(write_config, synth_dir):
     imgs = "input: {images: [data/img1.tif, data/img2.tif, data/img3.tif]}\nnormalization: {vrc_range: [150, 3000]}\n"
-    run_cli("run", write_config(imgs + "output: {directory: run_all}\n"))
-    run_cli("run", write_config(imgs + "filters: {min_circularity: 0.8}\noutput: {directory: run_strict}\n"))
+    run_cli("run", write_config(imgs))
+    strict = write_config(imgs + "filters: {min_circularity: 0.8}\noutput: {directory: strict}\n", "strict.yaml")
+    assert run_cli("run", synth_dir, "--settings", strict).exit_code == 0  # a comparison run
     mfile = synth_dir / "manual_counts.csv"
     for i in (1, 2):
-        img = synth_dir / "data" / f"img{i}.tif"
+        image = img(synth_dir, f"img{i}.tif")
         run_cli(
             "import-counts",
-            img,
-            cell_counter_xml(synth_dir / f"m{i}.xml", img.name, CENTRES),
+            image,
+            cell_counter_xml(synth_dir / f"m{i}.xml", image.name, CENTRES),
             "-o",
             mfile,
             "--by",
             "ana",
         )
-    run_cli(
-        "import-counts", synth_dir / "data" / "img1.tif", "--nuclei", "5", "--vrc-pos", "1", "-o", mfile, "--by", "ben"
-    )
+    run_cli("import-counts", img(synth_dir, "img1.tif"), "--nuclei", "5", "--vrc-pos", "1", "-o", mfile, "--by", "ben")
     out = synth_dir / "rep"
-    res = run_cli(
-        "report", synth_dir / "run_all", synth_dir / "run_strict", "-n", "all", "-n", "strict", "-m", mfile, "-o", out
-    )
+    (run_all,) = runs(synth_dir)
+    comp = synth_dir / "processed" / "comparisons" / "strict"
+    res = run_cli("report", run_all, comp, "-n", "all", "-n", "strict", "-m", mfile, "-o", out)
     assert res.exit_code == 0, res.output
     for f in (
         "program_counts.csv",
@@ -64,16 +63,12 @@ def test_report_end_to_end(write_config, synth_dir):
 
 
 def test_report_without_manual_and_bad_names(write_config, synth_dir, tmp_path_factory):
-    run_cli(
-        "run",
-        write_config(
-            "input: {images: [data/img1.tif]}\nnormalization: {vrc_range: [150, 3000]}\noutput: {directory: solo}\n"
-        ),
-    )
-    res = run_cli("report", synth_dir / "solo", "-o", synth_dir / "rep2")
+    run_cli("run", write_config("input: {images: [data/img1.tif]}\nnormalization: {vrc_range: [150, 3000]}\n"))
+    (solo,) = runs(synth_dir)
+    res = run_cli("report", solo, "-o", synth_dir / "rep2")
     assert res.exit_code == 0 and (synth_dir / "rep2" / "program_counts.csv").exists()
     assert not (synth_dir / "rep2" / "summary.csv").exists()
-    res = run_cli("report", synth_dir / "solo", "-n", "a", "-n", "b", "-o", synth_dir / "rep3")
+    res = run_cli("report", solo, "-n", "a", "-n", "b", "-o", synth_dir / "rep3")
     assert res.exit_code == 1
     elsewhere = tmp_path_factory.mktemp("not_output")  # neither an output folder nor in a workspace
     res = run_cli("report", elsewhere, "-o", synth_dir / "rep4")

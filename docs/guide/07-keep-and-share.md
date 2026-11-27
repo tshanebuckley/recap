@@ -22,12 +22,14 @@ points are worth more than totals: the report can then say which nuclei recap mi
 
 *As a lab member, I move or copy my workspace to another computer and keep everything.*
 
-Copy the whole folder (images, `recap.yaml`, `recap-data/`, `results/`), then **Open...** it on
+Copy the whole folder (`recap.yaml`, `raw/`, `processed/`, `recap-data/`), then **Open...** it on
 the other computer. Paths are stored relative to the folder and images are recognised by their
 content, so renamed images keep their history.
 
 **Done when:** counts, corrected masks, batches, settings and model versions are all there.
-Do not copy `recap-data/` alone: the settings live in `recap.yaml`.
+Do not copy `recap-data/` alone: the settings live in `recap.yaml` and the images in `raw/`.
+To share only the images, `raw/` is enough (recap never changes it); `processed/` can be made
+again by running recap.
 
 ## US-23 Update recap without losing work
 

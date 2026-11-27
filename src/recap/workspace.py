@@ -4,12 +4,13 @@
         recap.yaml                 THE settings of this workspace: every image, then under batches:
                                    and images: what a staining batch or a single image changes
         .recapignore               images to leave out (optional; see recap.ignore)
-        *.tif                      the images (anywhere below the folder, except those ignored)
-        results/...                outputs of `recap run` (output.directory in recap.yaml)
+        raw/batches/<batch>/       the images as acquired, by staining batch (raw/unbatched/: no batch)
+        processed/batches/<batch>/<image>/   everything recap makes from an image: outputs, corrected masks
+        processed/runs/<date>/     one run each: run log, summaries, spot check
         recap-data/
             recap.db               SQLite index (recap/db.py): images, runs, counts, masks, models, tuning
+            moves.csv              every file recap moved to keep the layout (recap/layout.py)
             backups/               copies made before each upgrade to a new recap version
-            masks/                 hand-edited masks (*_edited_N.tif)
             fiji/                  Fiji counting sessions
             models/<family>/vN/    trained model versions (never overwritten)
             tuning/                tuning results
@@ -104,12 +105,18 @@ class AddResult:
     def message(self) -> str:
         parts = [f"{len(self.added)} image(s) added"]
         if self.copied:
-            parts.append(f"copied to {self.folder.name}/")
+            parts = [*parts[:1], f"copied to {_from_top(self.folder)}/"]
         if self.already:
             parts.append(f"{len(self.already)} already in the workspace")
         if self.batch:
             parts.append(f"batch {self.batch!r}")
         return ", ".join(parts) + "."
+
+
+def _from_top(folder: Path) -> str:
+    """raw/batches/NAME from an absolute path (for messages)."""
+    parts = folder.parts
+    return "/".join(parts[parts.index("raw") :]) if "raw" in parts else folder.name
 
 
 def image_files_in(sources: list[Path]) -> list[Path]:
@@ -121,7 +128,8 @@ def image_files_in(sources: list[Path]) -> list[Path]:
         for p in cands:
             if p.suffix.lower() not in IMAGE_SUFFIXES or DATA_DIR in p.parts:
                 continue
-            if p.stem.endswith(DERIVED_SUFFIXES) or "_edited_" in p.stem or p.stem.endswith("_for_counting"):
+            if p.stem.endswith(DERIVED_SUFFIXES) or "_edited_" in p.stem or "_corrected_" in p.stem \
+                    or p.stem.endswith("_for_counting"):  # fmt: skip
                 continue
             out.append(p)
     seen, unique = set(), []
@@ -235,6 +243,7 @@ class Workspace:
         # backs up and upgrades a database from an older recap; self.upgrade says what was done (or None)
         self.engine, self.upgrade = open_database(self.db_path, __version__)
         self._fold_input_images()
+        self._organize_on_open()
 
     # ---- the settings file -------------------------------------------------------------------------
     @property
@@ -256,8 +265,52 @@ class Workspace:
             raise RecapError(f"{self.settings_path} is invalid:\n{e}") from e
 
     def output_dir(self, cfg=None) -> Path:
-        d = (cfg or self.settings()).output.directory
-        return d if d.is_absolute() else self.root / d
+        """processed/: where recap writes everything it makes from the images (recap.yaml's
+        output.directory is used only by comparison runs: recap run --settings)."""
+        from recap.layout import PROCESSED
+
+        return self.root / PROCESSED
+
+    def run_dir(self, stamp: str) -> Path:
+        from recap.layout import PROCESSED, RUNS
+
+        return self.root / PROCESSED / RUNS / stamp
+
+    def image_folder(self, sha: str) -> Path:
+        """processed/<batches/BATCH or unbatched>/<image name>/: an image's outputs and corrected masks."""
+        from recap.layout import Organizer
+
+        with self.session() as s:
+            row = s.get(ImageRow, sha)
+        if row is None or not row.path:
+            raise RecapError(f"image {sha[:12]} is not in this workspace")
+        return Organizer(self).image_folder(self.image_batches().get(sha), Path(row.path).name)
+
+    def organize(self, full: bool = False) -> list:
+        """Move images and their outputs into raw/ and processed/ by batch (see recap.layout)."""
+        from recap.layout import Organizer
+
+        moves = Organizer(self).organize(full=full)
+        self._doc_cache = None
+        return moves
+
+    def _organize_on_open(self) -> None:
+        """The first time recap 5.1 opens a workspace: everything into raw/ and processed/."""
+        from recap.db import Meta
+        from recap.layout import LAYOUT_VERSION
+
+        with self.session() as s:
+            row = s.get(Meta, "layout")
+            if row is not None and row.value == LAYOUT_VERSION:
+                return
+        self.scan(organize=False)
+        moves = self.organize(full=True)
+        with self.session() as s:
+            s.merge(Meta(key="layout", value=LAYOUT_VERSION))
+            s.commit()
+        if moves:
+            log.warning("Workspace %s organized into raw/ and processed/ by batch: %d file(s) moved "
+                        "(listed in recap-data/moves.csv).", self.root.name, len(moves))  # fmt: skip
 
     def images(self, cfg=None) -> list[Path]:
         """The workspace's images: every image in the folder except those in .recapignore."""
@@ -382,11 +435,14 @@ class Workspace:
     def image_files(self, include_ignored: bool = False) -> list[Path]:
         """Every image below the folder (recap's own outputs left out), without the ignored ones
         unless include_ignored."""
+        from recap.layout import PROCESSED
+
         out = []
         for p in sorted(self.root.rglob("*")):
-            if p.suffix.lower() not in IMAGE_SUFFIXES or DATA_DIR in p.relative_to(self.root).parts:
+            parts = p.relative_to(self.root).parts
+            if p.suffix.lower() not in IMAGE_SUFFIXES or DATA_DIR in parts or parts[0] == PROCESSED:
                 continue
-            if p.stem.endswith(DERIVED_SUFFIXES) or "_edited_" in p.stem:
+            if p.stem.endswith(DERIVED_SUFFIXES) or "_edited_" in p.stem or "_corrected_" in p.stem:
                 continue
             out.append(p)
         if include_ignored:
@@ -410,7 +466,7 @@ class Workspace:
     def _ignore_targets(self, paths: list[Path | str]) -> list[str]:
         out = []
         for p in paths:
-            p = Path(p) if Path(p).is_absolute() else (Path.cwd() / p)
+            p = self.current_path(Path(p) if Path(p).is_absolute() else (Path.cwd() / p))
             rel = self.rel(p)
             if Path(rel).is_absolute():
                 raise RecapError(f"{p} is not inside the workspace {self.root}")
@@ -426,8 +482,9 @@ class Workspace:
         """Bring ignored images (or folders) back. Returns the paths brought back."""
         return self.ignore_list.unignore(self._ignore_targets(paths))
 
-    def scan(self) -> dict[str, int]:
-        """Index images, run outputs and manual_counts CSVs below the folder. Unchanged files are skipped."""
+    def scan(self, organize: bool = True) -> dict[str, int]:
+        """Index images, run outputs and manual_counts CSVs below the folder (unchanged files are
+        skipped), then put new images into raw/ by batch (organize)."""
         n_img = n_runs = n_counts = 0
         with self.session() as s:
             known = {r.path: r for r in s.exec(select(ImageRow))}
@@ -461,12 +518,6 @@ class Workspace:
             for old, new in moved:
                 rename_entry(self.settings_path, "images", old, new)
         logs = set(self.root.rglob("run_log_*.yaml"))
-        try:
-            out = self.output_dir()
-            if out.is_dir() and not out.resolve().is_relative_to(self.root):  # outputs kept outside the folder
-                logs |= set(out.glob("run_log_*.yaml"))
-        except (RecapError, ValueError):
-            pass
         for log_file in sorted(logs):
             n_runs += self._index_run(log_file)
         for csv in sorted(self.root.rglob("manual_counts*.csv")):
@@ -477,7 +528,37 @@ class Workspace:
                     n_counts += self.add_count(mc.model_copy(update={"origin": mc.origin or self.rel(csv)}))
             except Exception as e:  # noqa: BLE001
                 log.warning("skipped %s: %s", csv, e)
+        if organize:
+            self.organize()
         return {"images": n_img, "runs": n_runs, "counts": n_counts}
+
+    def current_path(self, path: Path | str) -> Path:
+        """Where an image or output is now: the path itself if it exists, else where recap moved
+        it (recap-data/moves.csv; e.g. a path typed before recap put the image into raw/)."""
+        p = Path(path)
+        if p.exists():
+            return p
+        moves_csv = self.data / "moves.csv"
+        if not moves_csv.is_file():
+            return p
+        import csv
+
+        with moves_csv.open(encoding="utf-8", newline="") as fh:
+            moved = {r["from"]: r["to"] for r in csv.DictReader(fh)}
+        rel = self.rel(p if p.is_absolute() else Path.cwd() / p)
+        seen = set()
+        while rel in moved and rel not in seen:
+            seen.add(rel)
+            rel = moved[rel]
+        return self.abs(rel) or p
+
+    def sha_of(self, path: Path | str) -> str:
+        """The image a path names (even one recap has moved since), as its SHA-256."""
+        p = self.current_path(path)
+        sha = self._sha_for(str(p))
+        if sha is None:
+            raise RecapError(f"image not found: {path}")
+        return sha
 
     def _sha_for(self, path: str) -> str | None:
         p = Path(path)
@@ -649,9 +730,13 @@ class Workspace:
     ) -> Path:
         """Save a hand-edited mask as a new file (earlier versions are kept) and record it."""
         name = Path(self.image(sha)["image"]["name"]).stem
-        d = self.folder("masks")
-        k = 1 + sum(1 for _ in d.glob(f"{name}__{sha[:8]}_edited_*.tif"))
-        path = d / f"{name}__{sha[:8]}_edited_{k}.tif"
+        d = self.image_folder(sha)
+        d.mkdir(parents=True, exist_ok=True)
+        with self.session() as s:
+            k = 1 + len(s.exec(select(MaskRow).where(MaskRow.sha256 == sha)).all())
+        from recap.layout import unique_path as unique
+
+        path = unique(d / f"{name}_corrected_{k}.tif")
         tifffile.imwrite(path, np.asarray(labels).astype(np.uint16))
         n = int(len(np.unique(labels)) - (1 if (labels == 0).any() else 0))
         with self.session() as s:
@@ -785,6 +870,7 @@ class Workspace:
             s.commit()
         if name and note and self.has_settings and (created or not self.batch_note(name)):
             self._write_batch(name, note=note)
+        self.organize()  # their files move to raw/ and processed/ batches/<name> (or unbatched)
 
     def batch_note(self, name: str) -> str | None:
         return ((self._levels().get("batches") or {}).get(name) or {}).get("note")
@@ -809,6 +895,7 @@ class Workspace:
             from recap.settingsfile import rename_entry
 
             rename_entry(self.settings_path, "batches", old, new)
+        self.organize()  # the batch's folders get the new name
 
     def delete_batch(self, name: str) -> None:
         """Remove a batch and its settings; its images stay, in no batch."""
@@ -823,6 +910,7 @@ class Workspace:
             from recap.settingsfile import set_entry
 
             set_entry(self.settings_path, "batches", name, {}, {})
+        self.organize()  # its images move to unbatched/
 
     def level_settings(self, level: str, target: str = "") -> dict[str, Any]:
         """The values a batch (target: its name) or an image (target: its sha256) changes ({} if none)."""
@@ -965,17 +1053,23 @@ class Workspace:
         """Images not run yet or run with settings that have changed since."""
         return [r["sha256"] for r in self.status() if r["state"] in ("not run", "out of date")]
 
-    def run_folders(self) -> list[tuple[str, Path]]:
-        """(name, folder) of every output folder with runs, named by the folder (most recent last)."""
+    def run_folders(self) -> list[tuple[str, Path | list[Path]]]:
+        """The methods a workspace report compares: "recap" (every run of the workspace, the latest
+        result per image) and each comparison run folder (processed/comparisons/NAME)."""
+        from recap.layout import COMPARISONS
+
         with self.session() as s:
             runs = s.exec(select(RunRow).order_by(RunRow.stamp)).all()
-        seen: dict[str, Path] = {}
+        own = []
         for r in runs:
             d = self.abs(r.out_dir)
-            if d is not None and d.is_dir():
-                seen.pop(r.out_dir, None)
-                seen[r.out_dir] = d
-        return [(d.name, d) for d in seen.values()]
+            if d is not None and d.is_dir() and list(d.glob("image_summary_*.csv")) and d not in own:
+                own.append(d)
+        out: list[tuple[str, Path | list[Path]]] = [("recap", own)] if own else []
+        comp = self.output_dir() / COMPARISONS
+        if comp.is_dir():
+            out += [(d.name, d) for d in sorted(comp.iterdir()) if list(d.glob("image_summary_*.csv"))]
+        return out
 
     def report(self, out: Path | None = None, iou: float = 0.5):
         """`recap report` for this workspace: its run folders against its manual counts."""
@@ -984,7 +1078,9 @@ class Workspace:
         runs = self.run_folders()
         if not runs:
             raise RecapError("No runs in this workspace yet: run recap first (recap run, or Run in the app).")
-        out = Path(out) if out else self.folder("reports") / dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+        from recap.layout import PROCESSED, REPORTS
+
+        out = Path(out) if out else self.root / PROCESSED / REPORTS / dt.datetime.now().strftime("%Y%m%d_%H%M%S")
         return build_report(runs, [self.db_path], out, iou)
 
     # ---- adding images -----------------------------------------------------------------------------
@@ -992,24 +1088,25 @@ class Workspace:
         self,
         sources: list[Path],
         batch: str | None = None,
-        subfolder: str | None = None,
         note: str | None = None,
         progress=None,
     ) -> AddResult:
         """Bring image files, or every image in folders, into the workspace and (optionally) a batch.
 
-        Files outside the workspace are copied into `subfolder` (default: the batch's name, else
-        "images"); files already inside are used where they are. An image whose content is
-        already in the workspace is not copied again. `batch` is created if new; None = no batch.
-        `recap add` and the app's Add images both use this."""
+        Files are copied into raw/batches/<batch>/ (raw/unbatched/ without a batch); files already
+        inside the workspace folder are moved there. An image whose content is already in the
+        workspace is not copied again, but goes into the batch. `batch` is created if new; None =
+        no batch. `recap add` and the app's Add images both use this."""
         import shutil
+
+        from recap.layout import Organizer
 
         files = image_files_in(sources)
         if not files:
             raise RecapError("No .tif / .tiff images found in what was chosen.")
         known = {r["sha256"]: r["name"] for r in self.status()}
-        dest = self.root / safe_folder_name(subfolder or batch or "images")
-        added, existing, moved = [], [], []
+        dest = Organizer(self).raw_folder(batch)
+        added, existing, copied = [], [], []
         shas = []
         for k, src in enumerate(files, 1):
             if progress:
@@ -1020,18 +1117,18 @@ class Workspace:
                 shas.append(sha)
                 continue
             if src.resolve().is_relative_to(self.root):
-                target = src  # already in the folder: index it where it is
+                target = src  # already in the folder: organize() moves it into raw/
             else:
                 dest.mkdir(parents=True, exist_ok=True)
                 target = unique_path(dest / src.name)
                 shutil.copy2(src, target)
-                moved.append(target)
+                copied.append(target)
             added.append(target)
             shas.append(sha)
-        self.scan()
+        self.scan(organize=not batch)
         if batch:
-            self.assign_batch(shas, batch, note)
-        return AddResult(added, existing, moved, batch, dest)
+            self.assign_batch(shas, batch, note)  # (organizes)
+        return AddResult(added, existing, copied, batch, dest)
 
     # ---- models in use -------------------------------------------------------------------------------
     def use_model(self, family: str, version: int | None) -> str:
@@ -1069,7 +1166,7 @@ class Workspace:
         from recap.importers import import_counts
 
         res = import_counts(
-            Path(image), counts_file, options.get("fmt", "auto"), options.get("pixel_size"),
+            self.current_path(image), counts_file, options.get("fmt", "auto"), options.get("pixel_size"),
             options.get("uninfected_types"), options.get("infected_types"), options.get("no_infection", False),
             options.get("nuclei"), options.get("vrc_pos"), by or default_counter_name(),
         )  # fmt: skip

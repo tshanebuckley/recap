@@ -5,7 +5,7 @@ import pytest
 import tifffile
 import yaml
 
-from helpers import make_ws, run_cli
+from helpers import img, make_ws, run_cli
 from recap.errors import RecapError
 from recap.evaluate import Score
 from recap.workspace import Workspace
@@ -14,8 +14,7 @@ from recap.workspace import Workspace
 def _edited_workspace(synth_dir, extra=""):
     """Run, then save the program masks of two images (minus one nucleus) as corrected references."""
     make_ws(synth_dir, extra)
-    d = synth_dir / "data"
-    assert run_cli("run", synth_dir, "-i", d / "img1.tif", "-i", d / "img2.tif").exit_code == 0
+    assert run_cli("run", synth_dir, "-i", img(synth_dir, "img1.tif"), "-i", img(synth_dir, "img2.tif")).exit_code == 0
     ws = Workspace(synth_dir)
     for r in ws.status():
         if r["n_nuclei"]:

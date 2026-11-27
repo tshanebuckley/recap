@@ -13,10 +13,11 @@ corrections for a few. Those few are what everything later is checked against.
 |---|---|
 | **Run all** (or select images and **Run selected**); **Cancel** stops after the current image | `recap run` (all), `recap run -i IMG`, `recap run --out-of-date` |
 
-Each image is run with its own settings (recap.yaml → its batch → itself). Outputs go to
-`results/` in the workspace (`output.directory`): tables per image, label images, QC overlays,
-`image_summary_*.csv` and a run log. Columns are explained in
-[`docs/output_columns.md`](../output_columns.md).
+Each image is run with its own settings (recap.yaml → its batch → itself). Each image's tables,
+label images and QC overlay go to its own folder, `processed/batches/<batch>/<image>/` (or
+`processed/unbatched/<image>/`), next to its corrected masks; the run's `image_summary_*.csv`,
+`all_nuclei_*.csv` and run log go to `processed/runs/<date>/` (see US-31). Columns are explained
+in [`docs/output_columns.md`](../output_columns.md).
 
 **Done when:** counts appear and the state is *up to date*. The example image gives
 **472 nuclei, 248 VRC+**; on Windows or Mac, write down any difference.
@@ -110,7 +111,8 @@ Open an image and choose the **Fix outlines** tab. Pick a tool, then:
 
 **Undo** (or Ctrl+Z) goes back one edit at a time. While Draw new or Split is chosen, dragging
 draws instead of panning; choose Delete or Merge to pan again. **Save corrected mask** keeps it
-(earlier versions are kept too). Corrected masks are the reference for tuning and training, so
+(as `<image>_corrected_<N>.tif` in the image's folder under `processed/`; earlier versions are
+kept too). Corrected masks are the reference for tuning and training, so
 a few careful ones are worth more than many rough ones.
 
 **Done when:** the table's *corrected* column counts it and the image reopens with your
