@@ -1,5 +1,12 @@
 # Changelog
 
+## 5.3.2 — 2026-11-27
+Fix: pixi could not read `pixi.toml` (`expected a string, found table` at `conda-pypi-map`).
+
+- Removed the `conda-pypi-map` line added in 4.4.0. It pointed pixi at a `map.json` that was
+  never part of recap (a leftover from the build machine) and uses a form older pixi versions do
+  not accept. pixi again uses its normal conda-to-PyPI name mapping, as in 4.3.0.
+
 ## 5.3.1 — 2026-11-25
 Documentation: how recap counts.
 
