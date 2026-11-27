@@ -1,5 +1,34 @@
 # Changelog
 
+## 5.3.0 — 2026-11-25
+The app no longer loads TensorFlow: fast drawing on Linux without a GPU, no freeze, prompt exit;
+and a window that fits laptop screens.
+
+- **StarDist runs in a helper process for the app** (new `recap.stardist_worker`): the app sends
+  the combined image to `python -m recap.stardist_worker` (started on first use, restarted if it
+  stops, ended when the app closes; log: `recap_stardist_worker.log` in the temp folder) and gets
+  the outlines back, identical to running StarDist in the app (472 / 248 on the example). Training
+  from the Training tab runs there too, with its progress shown. The command line is unchanged.
+- **Fixed DEF-006 (Linux without a GPU: seconds per redraw).** With TensorFlow out of the window's
+  process, Mesa's llvmpipe no longer crashes, so `recap gui` no longer forces softpipe: a redraw
+  took 49 ms instead of 2,813 ms in a test on the example image.
+- **Windows "Not Responding" after typing the ICP8 range.** The freeze came with the session's
+  first segmentation, run in a background thread of the app's process (TensorFlow's libraries
+  loading next to the window's thread; 0% CPU). TensorFlow no longer loads in that process. Not
+  yet confirmed on Windows: see DEF-007 in the test plan.
+- **The app exits promptly.** After the window closes, recap stops the helper process, flushes its
+  logs and ends at once, instead of Python's own shutdown, which could stall after TensorFlow or
+  an error.
+- **The window fits the screen.** It opens at 1500 x 950 or smaller on a smaller screen (centred,
+  maximized when below 1100 x 650), and brings itself back inside the screen when a tab or image
+  makes it grow (Windows' `setGeometry` warnings came from a window larger than a laptop screen at
+  125-150% scaling). It needs about 870 px across: the Show bar and the Settings rows scroll
+  sideways when narrower, the side panel widens to the Settings rows when there is room, the
+  image list cuts long names (the full path is its tooltip), and the help line wraps.
+- Tests: `tests/test_worker.py` (the helper's requests, errors and restart; StarDist routed to it;
+  training from the app through it; the window on a small screen; with RECAP_SLOW_TESTS, a real
+  StarDist prediction through the helper equal to the one in-process).
+
 ## 5.2.0 — 2026-11-25
 Earlier runs kept, and settings files and StarDist models shared between workspaces.
 

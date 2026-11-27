@@ -15,7 +15,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
-from qtpy.QtCore import Qt
+from qtpy.QtCore import Qt, QTimer
 from qtpy.QtGui import QKeySequence, QShortcut
 from qtpy.QtWidgets import (
     QButtonGroup,
@@ -29,6 +29,7 @@ from qtpy.QtWidgets import (
     QMenu,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSlider,
     QSplitter,
     QTabWidget,
@@ -422,8 +423,18 @@ class RecapWindow(QMainWindow):
         if canvas is not None:
             l_lay.addWidget(canvas, 1)
         self.view = ViewBox(self)
-        l_lay.addWidget(self.view)
+        # the Show bar scrolls sideways on a narrow window instead of making the window wider than the
+        # screen (Windows laptops at 125-150% scaling: setGeometry warnings, a window partly off screen)
+        bar = QScrollArea()
+        bar.setWidget(self.view)
+        bar.setWidgetResizable(True)
+        bar.setFrameShape(QScrollArea.Shape.NoFrame)
+        bar.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        bar.setFixedHeight(self.view.sizeHint().height() + bar.horizontalScrollBar().sizeHint().height() + 12)
+        self.view_bar = bar
+        l_lay.addWidget(bar)
         self.help = QLabel()
+        self.help.setWordWrap(True)
         self.help.setStyleSheet("color: gray")
         l_lay.addWidget(self.help)
         split.addWidget(left)
@@ -448,10 +459,12 @@ class RecapWindow(QMainWindow):
         rows = (
             self.guided.scroll.widget().sizeHint().width() + self.guided.scroll.verticalScrollBar().sizeHint().width()
         )
-        right.setMinimumWidth(max(430, rows + 40))
+        right.setMinimumWidth(380)  # (narrower than its rows: the Settings page scrolls sideways)
+        self._side_width = max(430, rows + 40)  # its width when the screen allows (see fit_to_screen)
         split.addWidget(right)
         split.setStretchFactor(0, 3)
         split.setStretchFactor(1, 1)
+        self.split = split
         self.setCentralWidget(split)
         for k in range(4):
             QShortcut(QKeySequence(f"Ctrl+{k + 1}"), self, activated=lambda k=k: self.tabs.setCurrentIndex(k))
@@ -479,12 +492,16 @@ class RecapWindow(QMainWindow):
         row.addWidget(jobs)
         row.addStretch()
         prev = QPushButton("◀")
+        prev.setFixedWidth(32)
         prev.setToolTip("Previous image")
         prev.clicked.connect(lambda: self.step_image(-1))
         self.image_box = QComboBox()
-        self.image_box.setMinimumWidth(280)
+        self.image_box.setMinimumWidth(160)
+        self.image_box.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.image_box.setMinimumContentsLength(14)  # (long image names are cut, not widening the window)
         self.image_box.activated.connect(lambda i: self._goto(self.image_box.itemData(i)))
         nxt = QPushButton("▶")
+        nxt.setFixedWidth(32)
         nxt.setToolTip("Next image")
         nxt.clicked.connect(lambda: self.step_image(1))
         for w in (prev, self.image_box, nxt):
@@ -525,8 +542,12 @@ class RecapWindow(QMainWindow):
             if r["state"] == "ignored" and r["sha256"] != C.STATE.sha:
                 continue  # (ignored images: Images tab, filter "ignored images")
             self.image_box.addItem(f"{r['name']}  [{r['state']}]", r["sha256"])
+            self.image_box.setItemData(
+                self.image_box.count() - 1, f"{r['path']}  [{r['state']}]", Qt.ItemDataRole.ToolTipRole
+            )  # (the full name; the box may cut it)
         if C.STATE.sha:
             self.image_box.setCurrentIndex(self.image_box.findData(C.STATE.sha))
+        self.image_box.setToolTip(self.image_box.currentData(Qt.ItemDataRole.ToolTipRole) or "")
         self.image_box.blockSignals(False)
 
     def step_image(self, d: int) -> None:
@@ -555,6 +576,19 @@ class RecapWindow(QMainWindow):
         self.outlines.image_opened(sha)
         self.fill_images()
         self._apply_tab()
+        QTimer.singleShot(0, self.keep_on_screen)  # (after the new layers and labels have their sizes)
+
+    def keep_on_screen(self) -> None:
+        """A window that has grown past the screen (new content, a long name) is brought back inside it."""
+        screen = self.screen() if hasattr(self, "screen") else None
+        if screen is None or self.isMaximized() or self.isFullScreen():
+            return
+        avail = screen.availableGeometry()
+        w, h = min(self.width(), avail.width()), min(self.height(), avail.height())
+        if (w, h) != (self.width(), self.height()):
+            self.resize(max(w, self.minimumSizeHint().width()), max(h, self.minimumSizeHint().height()))
+            self.move(max(avail.x(), min(self.x(), avail.right() - self.width())),
+                      max(avail.y(), min(self.y(), avail.bottom() - self.height())))  # fmt: skip
 
     def confirm_leave(self, parent=None) -> bool:
         """Before another image or workspace: unsaved counts, outline fixes or settings?"""
@@ -580,7 +614,19 @@ class RecapWindow(QMainWindow):
         if TABS[index] == "settings" and C.STATE.sha:
             self.guided.load(C.STATE.sha)
             self.guided.schedule()
+            QTimer.singleShot(0, self.fit_side_panel)
         self._apply_tab()
+        QTimer.singleShot(0, self.keep_on_screen)
+
+    def fit_side_panel(self) -> None:
+        """Widen the side panel to the Settings rows (no sideways scrolling) if the image keeps 500 px."""
+        scroll = self.guided.scroll
+        need = scroll.widget().sizeHint().width() + scroll.verticalScrollBar().sizeHint().width() + 40
+        left, right = self.split.sizes()
+        if right < need:
+            grow = min(need - right, max(0, left - 500))
+            if grow > 0:
+                self.split.setSizes([left - grow, right + grow])
 
     def _apply_tab(self) -> None:
         """Only the current tab's layers are visible."""
@@ -651,9 +697,35 @@ def open_window(folder: Path | None):
     win = RecapWindow(viewer, qt_viewer.canvas.native)
     win._qt_viewer = qt_viewer  # keep it alive
     win.setStyleSheet(get_stylesheet("dark"))
-    win.resize(1500, 950)
+    fit_to_screen(win)
     win.show()
     return app, win
+
+
+def fit_to_screen(win, width: int = 1500, height: int = 950) -> None:
+    """Open at 1500 x 950, or smaller on a smaller screen (a laptop at 125-150% display scaling has
+    about 1280 x 720 to offer): asking for more than the screen gives Windows' setGeometry warnings
+    and a window partly off screen. Maximized when even that is too tight."""
+    screen = win.screen() if hasattr(win, "screen") else None
+    avail = screen.availableGeometry() if screen is not None else None
+    if avail is None:
+        win.resize(width, height)
+        return
+    w, h = min(width, int(avail.width() * 0.95)), min(height, int(avail.height() * 0.92))
+    win.resize(w, h)
+    win.move(avail.x() + (avail.width() - w) // 2, avail.y() + (avail.height() - h) // 2)
+    split, side = getattr(win, "split", None), getattr(win, "_side_width", None)
+    if split is not None and side:  # the side panel at its full width if the image keeps at least 500
+        side = min(side, max(380, w - 500))
+
+        def widths():
+            total = sum(split.sizes()) or w
+            split.setSizes([total - side, side])
+
+        widths()
+        QTimer.singleShot(0, widths)  # (again once shown: the splitter shares out its space when it appears)
+    if w < 1100 or h < 650:
+        win.showMaximized()
 
 
 def start(win: RecapWindow, folder: Path | None) -> None:

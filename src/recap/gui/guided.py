@@ -238,7 +238,7 @@ class GuidedPage(QWidget):
             inner_lay.addWidget(box)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)  # (a narrow window)
         scroll.setWidget(inner)
         lay.addWidget(scroll)
         self.scroll = scroll

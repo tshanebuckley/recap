@@ -36,6 +36,7 @@ errors: used everywhere
 | `settingsfile` | Edit `recap.yaml` keeping its comments (ruamel.yaml): the workspace's own sections and the `batches:` / `images:` entries. | Via `workspace`. |
 | `ignore` | `.recapignore`: which images a workspace leaves out (gitignore-like lines). | Via `workspace`. |
 | `transfer` | Export and import whole settings files (with a backup of recap.yaml; optionally with their trained model in one `.zip`) and StarDist model versions (`.zip` with `recap_model.yaml`; any StarDist model folder or zip can be imported). | Via the CLI and the app. |
+| `stardist_worker` | StarDist in a helper process (`python -m recap.stardist_worker`): the app turns it on so its own process never loads TensorFlow; `segment.stardist_labels` and the app's training use it. | Via `segment`, the app. |
 | `modelpath` | Finds a model named in the settings: trained versions are relative to the workspace folder, whatever folder recap was started in. | Via `segment`, `workspace`. |
 | `layout` | Where a workspace keeps its files: `raw/` and `processed/`, mirrored, by batch; `Organizer` moves images and outputs to match batches (and reorganizes older workspaces once), updating the database, recap.yaml's `images:` entries and run logs; `recap-data/moves.csv`. Never moves files from outside the workspace. | Via `workspace`. |
 | `counting` | Manual counting shared by `recap count`, the app and the spot check: recap's adjusted view, saving under the counter's name. | Yes. |

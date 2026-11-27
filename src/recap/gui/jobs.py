@@ -282,12 +282,20 @@ class TrainingPanel(_JobPanel):
         ws = self.workspace()
         if ws is None:
             return
+        from recap.stardist_worker import worker
         from recap.train import train
 
         fam, start = self.method.currentText(), self.start.text() or None
         epochs, note, b = self.epochs.value(), self.note.text() or None, self.bridge
         self.busy(True)
-        job = lambda: train(ws, fam, start, epochs, note=note, progress=b.message.emit)  # noqa: E731
+        helper = worker()
+        if helper is not None and fam == "stardist":  # TensorFlow stays out of the window's process
+
+            def job():
+                return helper.call("train", progress=b.message.emit, workspace=str(ws.root), family=fam,
+                                   start=start, epochs=epochs, note=note)  # fmt: skip
+        else:
+            job = lambda: train(ws, fam, start, epochs, note=note, progress=b.message.emit)  # noqa: E731
         C.run_in_background(job, self.trained, self.failed)
 
     def trained(self, res) -> None:

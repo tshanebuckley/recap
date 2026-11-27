@@ -1,6 +1,6 @@
 [workspace]
 name = "recap"
-version = "5.2.0"
+version = "5.3.0"
 description = "recap (Reconstruction of Cellular Architecture and Phenotypes): nuclear segmentation and HSV-1 infection scoring (DAPI + ICP8)"
 channels = ["conda-forge"]
 conda-pypi-map = { "conda-forge" = { location = "map.json", mapping-mode = "replace" } }

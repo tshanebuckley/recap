@@ -73,22 +73,33 @@ uses saved settings only.
 | `src/recap/gui/app.py` | `recap gui`: recap's window, or with `--napari` the napari viewer with docked panels |
 | `src/recap/gui/data.py`, `preview.py` | What an image view contains; Guided mode's preview (no Qt; segmentation reruns only for settings in `MODEL_STAGE_SETTINGS`) |
 | `src/recap/gui/single_instance.py` | One app per user |
+| `src/recap/stardist_worker.py` | StarDist (and StarDist training) in a helper process for the app |
 | `tests/test_window.py` | The editing logic; the window with Qt off-screen and no canvas |
 | `tests/test_panels.py`, `tests/test_guided.py` | Panels with Qt off-screen and a stand-in viewer |
 
 Rules: panels call the library and hold no logic (a new feature gets its library function and
 command first, then its button); Qt-free code stays testable without a screen (CI has no OpenGL,
-so tests use napari's ViewerModel without a canvas); napari is pinned to 0.10.x, so upgrade on purpose. Linux
-without a GPU: `recap gui` sets `GALLIUM_DRIVER=softpipe`, because Mesa's llvmpipe crashes when it
-compiles a shader after TensorFlow has loaded.
+so tests use napari's ViewerModel without a canvas); napari is pinned to 0.10.x, so upgrade on purpose.
+
+**TensorFlow stays out of the app's process.** StarDist runs in a helper process
+(`src/recap/stardist_worker.py`, started on first use, restarted if it stops, ended when the app
+closes; its log is `recap_stardist_worker.log` in the temp folder). The app sends it the combined
+image and gets the outlines back; training from the Training tab runs there too. So the window's
+process never loads TensorFlow: Mesa's fast llvmpipe renderer works on Linux without a GPU
+(about 50 ms per redraw; it crashed next to TensorFlow, so recap used to force softpipe at several
+seconds per redraw), the app exits promptly, and TensorFlow's libraries never load next to the
+window's thread (the Windows "Not Responding" freeze on the first segmentation). The command line
+runs StarDist in its own process, as before.
+
+**Window size.** The window opens at 1500 x 950, or smaller on a smaller screen, and keeps itself
+on the screen; it needs about 870 x 300 (the Show bar and the Settings rows scroll sideways when
+narrower). The side panel widens to the Settings rows when there is room.
 
 ## Next steps
 
 1. Guided mode for the settings it does not show yet (`fragments`, `qc`).
 2. Per-nucleus scores in `recap report` with corrected masks as the reference.
-3. Run TensorFlow in its own process, so the window never waits for it and Linux without a GPU
-   can use the faster llvmpipe driver (DEF-006).
-4. The assistant panel (deferred).
+3. The assistant panel (deferred).
 
 ## napari plugins worth trying
 

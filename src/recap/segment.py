@@ -102,6 +102,13 @@ def stardist_model(name: str):
 
 
 def stardist_labels(comb, seg: SegmentationConfig) -> np.ndarray:
+    from recap.stardist_worker import worker
+
+    remote = worker()
+    if remote is not None:  # the app: StarDist runs in its helper process (recap.stardist_worker)
+        found = model_path(seg.stardist_model)
+        return remote.predict(np.asarray(comb), str(found) if found else seg.stardist_model,
+                              seg.stardist_scale, seg.prob_thresh, seg.nms_thresh)  # fmt: skip
     from csbdeep.utils import normalize as csb_normalize
 
     model = stardist_model(seg.stardist_model)

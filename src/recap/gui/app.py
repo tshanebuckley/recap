@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from pathlib import Path
@@ -44,12 +45,29 @@ def bring_to_front(viewer_or_window) -> None:
     win.activateWindow()
 
 
-def software_gl_fix() -> None:
-    """Linux without a GPU (VMs, remote desktops) draws with Mesa's llvmpipe, which crashes when it
-    compiles a shader after TensorFlow is loaded (both carry LLVM). softpipe has no LLVM. Mesa reads
-    GALLIUM_DRIVER only for its software renderers, so real GPU drivers are unaffected."""
-    if sys.platform.startswith("linux"):
-        os.environ.setdefault("GALLIUM_DRIVER", "softpipe")
+def keep_tensorflow_out() -> None:
+    """StarDist runs in a helper process (recap.stardist_worker), so the window's process never loads
+    TensorFlow. That keeps Mesa's fast llvmpipe renderer usable on Linux without a GPU (it crashed
+    next to TensorFlow, so recap used to force the slow softpipe: DEF-006), avoids the stall when
+    the program exits, and keeps TensorFlow's libraries from loading next to the window's thread on
+    Windows (the "Not Responding" freeze on the first segmentation)."""
+    from recap.stardist_worker import use_worker
+
+    use_worker()
+
+
+def finish(code: int = 0) -> None:
+    """Leave the app: stop the helper process, flush the logs, then exit at once. Python's own
+    shutdown, run after Qt and the native libraries have been torn down, could stall."""
+    from recap.stardist_worker import use_worker
+
+    try:
+        use_worker(False)
+    finally:
+        logging.shutdown()
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(code)
 
 
 def dock_main(viewer, main) -> None:
@@ -68,8 +86,9 @@ def dock_main(viewer, main) -> None:
 def run(path: Path | None = None, full_napari: bool = False) -> bool:
     """Start the app on a workspace folder (default: the last one used, else the example workspace):
     recap's own window, or (full_napari) napari with recap's panels docked.
-    Returns False if it was already running (that window is brought forward)."""
-    software_gl_fix()
+    Returns False if it was already running (that window is brought forward). After the window
+    closes the process ends (finish)."""
+    keep_tensorflow_out()
     guard = SingleInstance()
     if not guard.acquire():
         return False
@@ -90,7 +109,9 @@ def run(path: Path | None = None, full_napari: bool = False) -> bool:
             guard.on_activate = lambda: bring_to_front(win)
             guard.listen()
             QTimer.singleShot(0, lambda: start(win, folder))
-            app.exec()
+            code = app.exec()
+            guard.release()
+            finish(code)
             return True
         import napari
 
@@ -113,6 +134,8 @@ def run(path: Path | None = None, full_napari: bool = False) -> bool:
 
         QTimer.singleShot(0, start)  # after the window is shown, so questions appear on top of it
         napari.run()
+        guard.release()
+        finish(0)
     finally:
         guard.release()
     return True
