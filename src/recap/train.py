@@ -30,6 +30,7 @@ import yaml
 from recap.config import PipelineConfig, load_config
 from recap.errors import RecapError
 from recap.evaluate import Reference, Score, score_config
+from recap.modelpath import use_model_root
 from recap.segment import combine
 from recap.tune import references
 from recap.workspace import Workspace
@@ -97,6 +98,7 @@ def train(
     progress: Callable[[str], None] | None = None,
 ) -> TrainResult:
     """Fine-tune a model on the workspace's corrected masks; save it as a new version."""
+    use_model_root(ws.root)  # (its recap-data/models/..., whatever else is open)
     config_path = ws.settings_path
     _, cfg, _ = load_config(config_path)
     refs = references(ws, cfg)
@@ -251,6 +253,7 @@ def compare_models(
     Images a version was trained on are counted separately (n_trained_on): its scores on those
     are optimistic. Results are also stored with each version in the workspace."""
     _, cfg, _ = load_config(ws.settings_path)
+    use_model_root(ws.root)  # (its recap-data/models/..., whatever else is open)
     refs = references(ws, cfg)
     candidates = [("settings: " + (cfg.segmentation.stardist_model if family == "stardist"
                                    else cfg.segmentation.cellpose_model or "cpsam"), None, cfg, set())]  # fmt: skip

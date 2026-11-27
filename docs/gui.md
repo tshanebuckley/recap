@@ -34,9 +34,11 @@ button calls the same library function as the command beside it, on the same `re
 | Images: More > Fiji location... | `recap fiji show / set` | `Workspace.fiji`, `fiji.set_default` |
 | Images: More > Your name for counts... | `recap count --by NAME --remember` | `counts.remember_counter_name` |
 | Images: More > Edit settings file | edit `recap.yaml` | |
+| Images: More > Export / Import settings file... (with the model: a .zip) | `recap settings export FILE [--with-model] / import FILE` | `transfer.export_settings`, `import_settings` |
 | Images: Summary | `recap status` (one image) | `Workspace.image` |
 | Tuning: Run tuning, Apply | `recap tune [--apply-to workspace / batch:NAME]` | `tune.tune`, `tune.apply_tuned` |
 | Training: Train, Compare, Use selected / standard | `recap train`, `recap models compare`, `recap models use` | `train.train`, `train.compare_models`, `Workspace.use_model` |
+| Training: Export selected version..., Import a model... | `recap models export VERSION FILE.zip`, `recap models import FILE [--use]` | `transfer.export_model`, `import_model` |
 
 **What each tab shows.** Images and Fix outlines: the stains and recap's outlines (the
 corrected ones if any), *excluded nuclei* on request. Count: the stains and your points only.

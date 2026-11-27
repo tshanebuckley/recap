@@ -38,7 +38,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from recap.errors import RecapError
+from recap.errors import ConfigError, RecapError
 from recap.gui import common as C
 from recap.gui.guided import PREVIEW_LAYERS, GuidedPage
 
@@ -145,6 +145,8 @@ class RecapPanel(QWidget):
             ("Fiji location...", self.fiji_location),
             ("Your name for counts...", lambda: self._set_name(ask=True)),
             ("Edit settings file (recap.yaml)", self.edit_settings),
+            ("Export settings file...", self.export_settings),
+            ("Import settings file...", self.import_settings),
             ("Rescan folder", self.rescan),
         ):
             menu.addAction(label, fn)
@@ -537,6 +539,65 @@ class RecapPanel(QWidget):
         if name and self.manual is not None:
             self.manual.name_label.setText(f"Counting and correcting as <b>{name}</b>")
         return name
+
+    def export_settings(self) -> None:
+        """Write the workspace's whole settings file (recap.yaml) for another workspace or person."""
+        from qtpy.QtWidgets import QFileDialog
+
+        from recap.transfer import export_settings
+
+        ws = C.STATE.workspace
+        if ws is None:
+            return
+        with_model = ws.has_settings and ws.model_in_use("stardist") is not None and QMessageBox.question(
+            self, "recap", "These settings use a model trained in this workspace. Put the model in the same "
+            "file (.zip), so the other workspace gets both?") == QMessageBox.StandardButton.Yes  # fmt: skip
+        name = f"{ws.root.name}_settings" + (".zip" if with_model else ".yaml")
+        kinds = "Settings + model (*.zip)" if with_model else "Settings files (*.yaml *.yml)"
+        path, _ = QFileDialog.getSaveFileName(self, "Export settings file", name, kinds)
+        if not path:
+            return
+        images = bool(ws._levels().get("images")) and QMessageBox.question(
+            self, "recap", "Include the settings of single images? (They name this workspace's image files; "
+            "usually not useful elsewhere.)") == QMessageBox.StandardButton.Yes  # fmt: skip
+        try:
+            res = export_settings(ws, Path(path), images=images, force=True, with_model=with_model)
+        except (RecapError, ConfigError) as e:
+            return self.say(f"Not exported: {e}")
+        self.say(f"Settings written to {res.path}. " + " ".join(res.notes))
+
+    def import_settings(self) -> None:
+        """Make a settings file this workspace's settings (recap.yaml is backed up first)."""
+        from qtpy.QtWidgets import QFileDialog
+
+        from recap.transfer import import_settings
+
+        ws = C.STATE.workspace
+        if ws is None or not self.confirm_leave():
+            return
+        path, _ = QFileDialog.getOpenFileName(self, "Import settings file", "",
+                                              "Settings files (*.yaml *.yml *.zip)")  # fmt: skip
+        if not path:
+            return
+        box = QMessageBox(self)
+        box.setWindowTitle("recap")
+        box.setText(f"Make {Path(path).name} this workspace's settings?\n\nIts settings replace recap.yaml's "
+                    "(a backup is kept in recap-data/settings_backups/).")  # fmt: skip
+        keep = box.addButton("Keep this workspace's batch settings", QMessageBox.ButtonRole.AcceptRole)
+        take = box.addButton("Also take the file's batch settings", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton(QMessageBox.StandardButton.Cancel)
+        box.exec()
+        if box.clickedButton() not in (keep, take):
+            return
+        try:
+            res = import_settings(ws, Path(path), batches=box.clickedButton() is take)
+        except (RecapError, ConfigError) as e:
+            return self.say(f"Not imported: {e}")
+        self.say(f"{Path(path).name} is now this workspace's settings. Images whose settings changed are "
+                 "out of date: Run out-of-date. " + " ".join(res.notes))  # fmt: skip
+        C.STATE.changed()
+        if C.STATE.sha:
+            self.guided.load(C.STATE.sha, force=True)
 
     def edit_settings(self) -> None:
         ws = C.STATE.workspace

@@ -11,7 +11,7 @@ Library use (no printing; see docs/architecture.md):
     result = process_file(ws.resolve(sha).cfg, path)    # one image with its own settings
 """
 
-__version__ = "5.1.0"
+__version__ = "5.2.0"
 
 _API = {
     "load_config": "recap.config",

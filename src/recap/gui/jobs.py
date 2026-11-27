@@ -2,10 +2,13 @@
 
 Tuning finds better settings (recap.tune) and applies them to the workspace or a batch, as
 `recap tune --apply-to`. Training makes model versions (recap.train) and chooses the one the
-workspace uses, as `recap models use`.
+workspace uses, as `recap models use`; it exports and imports StarDist versions, as
+`recap models export|import` (recap.transfer).
 """
 
 from __future__ import annotations
+
+from pathlib import Path
 
 from qtpy.QtWidgets import (
     QComboBox,
@@ -22,7 +25,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from recap.errors import RecapError
+from recap.errors import ConfigError, RecapError
 from recap.gui import common as C
 
 
@@ -58,11 +61,11 @@ class _JobPanel(QWidget):
 
     def workspace_changed(self, ws) -> None:
         if ws is None:
-            self.where.setText("Open a workspace in the recap panel.")
+            self.where.setText("Open a workspace in the Images tab.")
             return
         masks = len(ws.reference_masks())
         self.where.setText(f"Workspace {ws.root.name}: {masks} image(s) with a corrected mask "
-                           "(Manual mode: Correct outlines).")  # fmt: skip
+                           "(the Fix outlines tab).")  # fmt: skip
 
     def workspace(self):
         ws = C.STATE.workspace
@@ -186,7 +189,73 @@ class TrainingPanel(_JobPanel):
             b.clicked.connect(fn)
             row.addWidget(b)
         self.lay.addLayout(row)
+        row = QHBoxLayout()
+        for label, fn, tip in (
+            ("Export selected version...", self.export_selected,
+             "Write its weights to a .zip, to use in another workspace or share"),
+            ("Import a model...", self.import_model,
+             "A .zip exported from recap, or any StarDist model (folder or .zip with config.json and weights)"),
+        ):  # fmt: skip
+            b = QPushButton(label)
+            b.setToolTip(tip)
+            b.clicked.connect(fn)
+            row.addWidget(b)
+        self.lay.addLayout(row)
         self.show_versions()
+
+    def _selected_version(self) -> int | None:
+        from qtpy.QtCore import Qt
+
+        items = self.versions.selectedItems()
+        if not items:
+            self.log.append("Select a version in the table first.")
+            return None
+        return self.versions.item(items[0].row(), 0).data(Qt.ItemDataRole.UserRole)
+
+    def export_selected(self) -> None:
+        from qtpy.QtWidgets import QFileDialog
+
+        from recap.transfer import export_model
+
+        ws, v = self.workspace(), self._selected_version()
+        if ws is None or v is None:
+            return
+        if self.method.currentText() != "stardist":
+            return self.log.append("Exporting is for StarDist versions.")
+        path, _ = QFileDialog.getSaveFileName(self, "Export model version", f"{ws.root.name}_stardist_v{v}.zip",
+                                              "Zip files (*.zip)")  # fmt: skip
+        if not path:
+            return
+        try:
+            res = export_model(ws, v, Path(path), force=True)
+        except RecapError as e:
+            return self.log.append(f"Not exported: {e}")
+        self.log.append(f"StarDist v{v} written to {res.path}.")
+
+    def import_model(self) -> None:
+        from qtpy.QtWidgets import QFileDialog, QMessageBox
+
+        from recap.transfer import import_model
+
+        ws = self.workspace()
+        if ws is None:
+            return
+        path, _ = QFileDialog.getOpenFileName(self, "Import a StarDist model", "", "Zip files (*.zip);;All files (*)")
+        if not path:  # (a model folder: choose its config.json)
+            return
+        src = Path(path)
+        if src.name == "config.json":
+            src = src.parent
+        use = QMessageBox.question(self, "recap", "Segment the whole workspace with the imported model now?\n"
+                                   "(Every image becomes out of date.)") == QMessageBox.StandardButton.Yes  # fmt: skip
+        try:
+            res = import_model(ws, src, use=use)
+        except (RecapError, ConfigError) as e:
+            return self.log.append(f"Not imported: {e}")
+        self.log.append(f"Imported as StarDist v{res.version}. " + " ".join(res.notes))
+        self.method.setCurrentText("stardist")
+        self.show_versions()
+        C.STATE.changed()
 
     def workspace_changed(self, ws) -> None:
         super().workspace_changed(ws)
@@ -247,12 +316,9 @@ class TrainingPanel(_JobPanel):
         self.show_versions()
 
     def use_selected(self) -> None:
-        from qtpy.QtCore import Qt
-
-        items = self.versions.selectedItems()
-        if not items:
-            return self.log.append("Select a version in the table first.")
-        self.use(self.versions.item(items[0].row(), 0).data(Qt.ItemDataRole.UserRole))
+        v = self._selected_version()
+        if v is not None:
+            self.use(v)
 
     def use(self, version: int | None) -> None:
         ws = self.workspace()

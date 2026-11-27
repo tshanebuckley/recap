@@ -303,7 +303,7 @@ def run(
     target: WsArg = Path("."),
     image: Annotated[
         list[Path] | None,
-        typer.Option("--image", "-i", exists=True, dir_okay=False, help="Only this image (repeatable)."),
+        typer.Option("--image", "-i", dir_okay=False, help="Only this image (repeatable; an old path works)."),
     ] = None,
     out_of_date: Annotated[
         bool, typer.Option("--out-of-date", help="Only images not run yet or whose settings changed since.")
@@ -409,7 +409,7 @@ def status(target: WsArg = Path(".")) -> None:
 # ---------------------------------------------------------------- counting
 @app.command()
 def count(
-    images: Annotated[list[Path], typer.Argument(exists=True, dir_okay=False, help="Images to count.")],
+    images: Annotated[list[Path], typer.Argument(dir_okay=False, help="Images to count.")],
     by: Annotated[str | None, typer.Option("--by", help="Who is counting (default: the remembered name).")] = None,
     remember: Annotated[bool, typer.Option("--remember", help="Remember --by for later counts.")] = False,
     original: Annotated[
@@ -445,7 +445,7 @@ def count(
     added = 0
     try:
         for k, img in enumerate(images, 1):
-            out = count_in_fiji(ws, ws.sha_of(img), session, by, lambda q: typer.confirm(q, default=True),
+            out = count_in_fiji(ws, _sha(ws, img), session, by, lambda q: typer.confirm(q, default=True),
                                 original, not no_infection, f"image {k} of {len(images)}")  # fmt: skip
             if out.status == "cancel":
                 typer.echo("Stopped.")
@@ -475,7 +475,7 @@ def _types(text: str | None) -> list[int] | None:
 
 @app.command("import-counts")
 def import_counts_cmd(
-    image: Annotated[Path, typer.Argument(exists=True, dir_okay=False, help="The image that was counted.")],
+    image: Annotated[Path, typer.Argument(dir_okay=False, help="The image that was counted.")],
     counts: Annotated[
         Path | None, typer.Argument(exists=True, dir_okay=False, help="Cell Counter XML or points CSV.")
     ] = None,
@@ -720,16 +720,23 @@ WorkspaceOpt = Annotated[
 ]
 
 
-def _shas(ws, images: list[Path]) -> list[str]:
+def _sha(ws, image: Path) -> str:
+    """The image a path names (also a path recap has moved it from since), or a clear error."""
+    try:
+        return ws.sha_of(image)
+    except RecapError as e:
+        _fail(f"ERROR: {e} (not in this workspace, and not an image recap has moved)")
 
+
+def _shas(ws, images: list[Path]) -> list[str]:
     ws.scan()
-    return [ws.sha_of(p) for p in images]
+    return [_sha(ws, p) for p in images]
 
 
 @batch_app.command("assign")
 def batch_assign(
     name: Annotated[str, typer.Argument(help="Batch name, e.g. 'stain 2026-11-03'. Created if new.")],
-    images: Annotated[list[Path], typer.Argument(exists=True, dir_okay=False, help="Images in this batch.")],
+    images: Annotated[list[Path], typer.Argument(dir_okay=False, help="Images in this batch.")],
     note: Annotated[str | None, typer.Option(help="Note for a new batch.")] = None,
 ) -> None:
     """Put images in a staining batch (an image is in at most one).
@@ -741,7 +748,7 @@ def batch_assign(
 
 
 @batch_app.command("remove")
-def batch_remove(images: Annotated[list[Path], typer.Argument(exists=True, dir_okay=False)]) -> None:
+def batch_remove(images: Annotated[list[Path], typer.Argument(dir_okay=False)]) -> None:
     """Take images out of their batch."""
     ws = _ws(images[0], settings=False)
     ws.assign_batch(_shas(ws, images), None)
@@ -797,7 +804,7 @@ def _level(ws, batch: str | None, image: Path | None) -> tuple[str, str, str]:
         _fail("Give --batch or --image, not both.")
     if image:
         ws.scan()
-        return "image", ws.sha_of(image), str(image)
+        return "image", _sha(ws, image), str(image)
     if batch:
         if batch not in {b["name"] for b in ws.batches()}:
             _fail(f"No batch {batch!r} (recap batch list).")
@@ -809,7 +816,7 @@ def _level(ws, batch: str | None, image: Path | None) -> tuple[str, str, str]:
 def settings_set(
     pairs: Annotated[list[str], typer.Argument(help="key=value, e.g. filters.min_focus=0.6")],
     batch: Annotated[str | None, typer.Option(help="Set for this staining batch.")] = None,
-    image: Annotated[Path | None, typer.Option(exists=True, dir_okay=False, help="Set for this image.")] = None,
+    image: Annotated[Path | None, typer.Option(dir_okay=False, help="Set for this image.")] = None,
     reason: Annotated[str | None, typer.Option(help="Required for an image: why it needs its own settings.")] = None,
     workspace: WorkspaceOpt = None,
 ) -> None:
@@ -838,7 +845,7 @@ def settings_set(
 def settings_unset(
     keys: Annotated[list[str], typer.Argument(help="Keys to remove, e.g. filters.min_focus")],
     batch: Annotated[str | None, typer.Option(help="From this staining batch.")] = None,
-    image: Annotated[Path | None, typer.Option(exists=True, dir_okay=False, help="From this image.")] = None,
+    image: Annotated[Path | None, typer.Option(dir_okay=False, help="From this image.")] = None,
     workspace: WorkspaceOpt = None,
 ) -> None:
     """Remove values from a batch or an image: the level above applies again."""
@@ -853,7 +860,7 @@ def settings_unset(
 @settings_app.command("clear")
 def settings_clear(
     batch: Annotated[str | None, typer.Option(help="This staining batch.")] = None,
-    image: Annotated[Path | None, typer.Option(exists=True, dir_okay=False, help="This image.")] = None,
+    image: Annotated[Path | None, typer.Option(dir_okay=False, help="This image.")] = None,
     workspace: WorkspaceOpt = None,
 ) -> None:
     """Remove all of a batch's or an image's settings (the app: Guided mode > Clear this image's settings)."""
@@ -865,15 +872,80 @@ def settings_clear(
     typer.echo(f"Settings of {what} cleared.")
 
 
+@settings_app.command("export")
+def settings_export(
+    dest: Annotated[Path, typer.Argument(dir_okay=False, help="The file to write (.yaml; .zip with --with-model).")],
+    workspace: WorkspaceOpt = None,
+    with_images: Annotated[bool, typer.Option("--with-images", help="Also the single-image settings.")] = False,
+    with_model: Annotated[
+        bool, typer.Option("--with-model", help="A .zip with the settings and the trained model they use.")
+    ] = False,
+    force: Annotated[bool, typer.Option("--force", help="Replace an existing file.")] = False,
+) -> None:
+    """Write the workspace's whole settings file (recap.yaml) to share or reuse.
+
+    \b
+    Batch settings go with it; single-image settings only with --with-images (they name this
+    workspace's files). Use it elsewhere with recap settings import FILE or recap init FOLDER --from FILE.
+    If the settings use one of this workspace's trained models, --with-model puts both in one .zip:
+    importing it adds the model to the other workspace and makes its settings use it.
+    """
+    from recap.transfer import export_settings
+
+    ws = _ws(workspace or Path("."))
+    try:
+        res = export_settings(ws, dest, images=with_images, force=force, with_model=with_model)
+    except (RecapError, ConfigError) as e:
+        _fail(f"ERROR: {e}")
+    typer.echo(f"Settings written to {res.path}")
+    for n in res.notes:
+        typer.echo(f"note: {n}")
+
+
+@settings_app.command("import")
+def settings_import(
+    src: Annotated[
+        Path, typer.Argument(exists=True, dir_okay=False, help="A settings file (.yaml), or settings + model (.zip).")
+    ],
+    workspace: WorkspaceOpt = None,
+    with_batches: Annotated[bool, typer.Option("--with-batches", help="Also take the file's batch settings.")] = False,
+    with_images: Annotated[
+        bool, typer.Option("--with-images", help="Also take the file's single-image settings.")
+    ] = False,
+) -> None:
+    """Make a settings file the workspace's settings (recap.yaml is backed up first).
+
+    \b
+    The file's sections replace recap.yaml's own (every image's settings). The workspace keeps its
+    batch and single-image settings unless --with-batches / --with-images (then the file's entries
+    replace those of the same name). Images whose settings changed are out of date: recap run --out-of-date.
+    The backup is in recap-data/settings_backups/. A .zip from settings export --with-model also adds its
+    model as the next version and uses it; a plain file that names a trained model this workspace does
+    not have leaves the workspace's model as it is.
+    """
+    from recap.transfer import import_settings
+
+    ws = _ws(workspace or Path("."), settings=False)
+    try:
+        res = import_settings(ws, src, batches=with_batches, images=with_images)
+    except (RecapError, ConfigError) as e:
+        _fail(f"ERROR: {e}")
+    typer.echo(f"{src.name} is now the workspace's settings ({res.path})."
+               + (f" Previous recap.yaml saved as {res.backup}." if res.backup else ""))  # fmt: skip
+    for n in res.notes:
+        typer.echo(f"note: {n}")
+    typer.echo("Run the images whose settings changed: recap run --out-of-date")
+
+
 @settings_app.command("show")
-def settings_show(image: Annotated[Path, typer.Argument(exists=True, dir_okay=False)]) -> None:
+def settings_show(image: Annotated[Path, typer.Argument(dir_okay=False)]) -> None:
     """An image's effective settings: what differs from recap.yaml, and which level set it."""
     from recap.levels import get_path
 
     ws = _ws(image)
     ws.scan()
     base = ws.settings()
-    r = ws.resolve(ws.sha_of(image), base)
+    r = ws.resolve(_sha(ws, image), base)
     typer.echo(f"{image.name}: {r.label}" + (f"   batch: {r.batch}" if r.batch else ""))
     if r.reason:
         typer.echo(f"reason for its own settings: {r.reason}")
@@ -1036,6 +1108,59 @@ def models_use(
         _fail(f"ERROR: {e}")
     typer.echo(f"recap.yaml: segmentation.method: {method}, model: {value}\nEvery image is now out of date: "
                "recap run --out-of-date")  # fmt: skip
+
+
+@models_app.command("export")
+def models_export(
+    version: Annotated[str, typer.Argument(help="A version of this workspace, e.g. v2.")],
+    dest: Annotated[Path, typer.Argument(dir_okay=False, help="The .zip to write.")],
+    target: WsArg = Path("."),
+    force: Annotated[bool, typer.Option("--force", help="Replace an existing file.")] = False,
+) -> None:
+    """Write a trained StarDist version (its weights, thresholds and config) to a .zip.
+
+    The zip also holds recap_model.yaml: where it came from, its scores and the model it was
+    trained from. Bring it into another workspace with recap models import FILE.zip.
+    """
+    from recap.transfer import export_model
+
+    ws = _ws(target, settings=False)
+    v = version.lstrip("v")
+    if not v.isdigit():
+        _fail("Give a version such as v2 (recap models list).")
+    try:
+        res = export_model(ws, int(v), dest, force=force)
+    except RecapError as e:
+        _fail(f"ERROR: {e}")
+    typer.echo(f"StarDist v{v} written to {res.path}")
+
+
+@models_app.command("import")
+def models_import(
+    src: Annotated[
+        Path, typer.Argument(exists=True, help="A .zip from recap models export, or a StarDist model folder or zip.")
+    ],
+    target: WsArg = Path("."),
+    use: Annotated[bool, typer.Option("--use", help="Segment the workspace with it (recap.yaml).")] = False,
+    note: Annotated[str | None, typer.Option(help="A note to keep with it.")] = None,
+) -> None:
+    """Bring in StarDist weights as the next version of this workspace.
+
+    Accepts a zip made by recap models export, or any StarDist model (a folder or zip with
+    config.json and weights_best.h5). recap models compare scores it on your corrected masks.
+    """
+    from recap.transfer import import_model
+
+    ws = _ws(target, settings=use)
+    try:
+        res = import_model(ws, src, note=note, use=use)
+    except (RecapError, ConfigError) as e:
+        _fail(f"ERROR: {e}")
+    typer.echo(f"Imported as StarDist v{res.version} ({ws.rel(res.path)}).")
+    for n in res.notes:
+        typer.echo(n)
+    if use:
+        typer.echo("Every image is now out of date: recap run --out-of-date")
 
 
 # ---------------------------------------------------------------- fiji

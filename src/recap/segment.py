@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -14,6 +13,7 @@ from skimage.segmentation import expand_labels, relabel_sequential
 
 from recap.config import FragmentConfig, NormalizationConfig, SegmentationConfig
 from recap.geometry import circ_of, ellipse_residual, fit_ellipse, outline_mask
+from recap.modelpath import model_path
 
 log = logging.getLogger(__name__)
 
@@ -69,6 +69,8 @@ _MODELS: dict[str, Any] = {}
 
 
 def cellpose_model(path: str | None):
+    found = model_path(path)
+    path = str(found) if found else path
     key = f"cellpose:{path}"
     if key not in _MODELS:
         from cellpose import models
@@ -84,16 +86,19 @@ def cellpose_labels(comb, seg: SegmentationConfig) -> np.ndarray:
 
 
 def stardist_model(name: str):
-    if name not in _MODELS:
+    found = model_path(name)
+    key = str(found) if found else name  # (by absolute path: two workspaces' v1 are different models)
+    if key not in _MODELS:
         from stardist.models import StarDist2D
 
-        p = Path(name)
-        _MODELS[name] = (
-            StarDist2D(None, name=p.name, basedir=str(p.parent)) if p.exists() else StarDist2D.from_pretrained(name)
+        if found is None and ("/" in name or "\\" in name):
+            raise ValueError(f"StarDist model folder not found: {name} (relative to the workspace folder)")
+        _MODELS[key] = (
+            StarDist2D(None, name=found.name, basedir=str(found.parent)) if found else StarDist2D.from_pretrained(name)
         )
-        if _MODELS[name] is None:
+        if _MODELS[key] is None:
             raise ValueError(f"unknown StarDist model '{name}'")
-    return _MODELS[name]
+    return _MODELS[key]
 
 
 def stardist_labels(comb, seg: SegmentationConfig) -> np.ndarray:

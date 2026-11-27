@@ -61,7 +61,11 @@ def run_outputs(folder: Path) -> dict[str, dict[str, Path]]:
         files = listed.get(str(p)) or {}
         flat = {"labels": f"{p.stem}_labels.tif", "table": f"{p.stem}_nuclei.csv",
                 "excluded_labels": f"{p.stem}_excluded_labels.tif"}  # fmt: skip
-        out[str(p)] = {k: files.get(k) or folder / name for k, name in flat.items()}
+        # an output listed with another kind of file is an archived one (previous_runs/<date>.zip):
+        # not readable here, so it counts as missing
+        out[str(p)] = {k: (files[k] if files.get(k) and files[k].suffix == Path(name).suffix else
+                           folder / name if k not in files else folder / "archived" / name)
+                       for k, name in flat.items()}  # fmt: skip
     return out
 
 

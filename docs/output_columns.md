@@ -114,7 +114,7 @@ One row per image. Written by `recap run`.
 | `saturated_dapi_fraction` | Fraction of DAPI pixels at the channel's ceiling (255, 4095 or 65535); 0 if the channel never reaches one. |
 | `saturated_vrc_fraction` | Same for VRC. |
 | `vrc_background` | Median normalised VRC outside nuclei. |
-| `settings` | Where the image's settings came from: `workspace` (its recap.yaml), plus `batch:<name>` and `image` for each level that changed something; `settings file` for a settings file run outside a workspace. |
+| `settings` | Where the image's settings came from: `workspace` (its recap.yaml), plus `batch:<name>` and `image` for each level that changed something; `settings file` only when `run_batch` is called from Python without a workspace. |
 | `overridden` | Settings changed for this image's batch or for the image itself (`;`-separated); empty if none. |
 | `settings_reason` | Why the image has its own settings (required when they are saved). |
 | `median_edge_sharpness` | Median `focus_edge` over all nuclei (kept and excluded); compared across the batch for `blurry_vs_batch`. |

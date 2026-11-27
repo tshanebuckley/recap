@@ -57,3 +57,6 @@ def test_comparison_run_with_another_settings_file(synth_dir, tmp_path_factory):
     assert row["n_nuclei"] == 4 and row["state"] == "up to date"
     res = run_cli("run", other)
     assert res.exit_code == 1 and "recap init FOLDER --from" in res.output
+    res = run_cli("settings", "show", synth_dir / "raw" / "unbatched" / "never_here.tif")
+    assert res.exit_code == 1 and "not an image recap has moved" in res.output
+    assert run_cli("settings", "show", synth_dir / "data" / "img1.tif").exit_code == 0  # an old path: followed

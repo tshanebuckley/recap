@@ -231,3 +231,43 @@ def test_ignore_and_bring_back_in_the_images_tab(win):
     assert panel.table.rowCount() == 0 and "back in the workspace" in panel.msg.text()
     panel.filter.setCurrentIndex(0)
     assert panel.table.rowCount() == 6 and w.image_box.count() == 6
+
+
+def test_settings_and_model_export_import_in_the_app(win, tmp_path_factory, monkeypatch):
+    import yaml
+
+    from recap.gui import common
+    from test_transfer import _fake_stardist
+
+    ws, panel = common.STATE.workspace, win.images
+    shared = tmp_path_factory.mktemp("shared")
+    monkeypatch.setattr(QtWidgets.QFileDialog, "getSaveFileName", lambda *a, **k: (str(shared / "s.yaml"), ""))
+    panel.export_settings()
+    assert "Settings written" in panel.msg.text() and (shared / "s.yaml").is_file()
+    doc = yaml.safe_load((shared / "s.yaml").read_text(encoding="utf-8"))
+    doc["filters"] = {**(doc.get("filters") or {}), "min_focus": 0.42}
+    (shared / "s.yaml").write_text(yaml.safe_dump(doc), encoding="utf-8")
+    monkeypatch.setattr(QtWidgets.QFileDialog, "getOpenFileName", lambda *a, **k: (str(shared / "s.yaml"), ""))
+
+    def keep_ours(box):
+        box.clickedButton = lambda: box.buttons()[0]  # "Keep this workspace's batch settings"
+        return 0
+
+    monkeypatch.setattr(QtWidgets.QMessageBox, "exec", keep_ours)
+    panel.import_settings()
+    assert "is now this workspace's settings" in panel.msg.text() and ws.settings().filters.min_focus == 0.42
+    assert list((ws.data / "settings_backups").iterdir())
+    # Training tab: export the selected version, import one
+    v1 = _fake_stardist(ws.model_dir("stardist", 1))
+    ws.register_model("stardist", 1, v1, parent="2D_versatile_fluo")
+    training = win.show_jobs().findChild(QtWidgets.QTabWidget).widget(1)
+    training.show_versions()
+    training.versions.selectRow(0)
+    monkeypatch.setattr(QtWidgets.QFileDialog, "getSaveFileName", lambda *a, **k: (str(shared / "v1.zip"), ""))
+    training.export_selected()
+    assert (shared / "v1.zip").is_file() and "written to" in training.log.toPlainText()
+    monkeypatch.setattr(QtWidgets.QFileDialog, "getOpenFileName", lambda *a, **k: (str(shared / "v1.zip"), ""))
+    no = QtWidgets.QMessageBox.StandardButton.No
+    monkeypatch.setattr(QtWidgets.QMessageBox, "question", lambda *a, **k: no)
+    training.import_model()
+    assert "Imported as StarDist v2" in training.log.toPlainText() and training.versions.rowCount() == 2

@@ -238,6 +238,9 @@ class Workspace:
         self.db_path = self.data / DB_NAME
         self.settings_path = self.root / SETTINGS_NAME
         self.ignore_list = IgnoreList(self.root)
+        from recap.modelpath import use_model_root
+
+        use_model_root(self.root)  # its trained models (recap-data/models/...) are found from any folder
         self._doc_cache: tuple[tuple[int, int], dict] | None = None
         self._fold_database_levels()  # (before the upgrade drops the table that held them)
         # backs up and upgrades a database from an older recap; self.upgrade says what was done (or None)
@@ -285,6 +288,42 @@ class Workspace:
         if row is None or not row.path:
             raise RecapError(f"image {sha[:12]} is not in this workspace")
         return Organizer(self).image_folder(self.image_batches().get(sha), Path(row.path).name)
+
+    def keep_previous_outputs(self, sha: str, org=None) -> None:
+        """Before a run writes an image's new outputs: its current outputs move to previous/, and
+        what was in previous/ (the run before) is zipped into previous_runs/<date_time>.zip.
+        Corrected masks stay where they are. The database and run logs follow (recap.layout)."""
+        from recap.layout import OUTPUT_SUFFIXES, PREVIOUS, PREVIOUS_RUNS, Organizer
+
+        folder = self.image_folder(sha)
+        if not folder.is_dir():
+            return
+        stem = folder.name
+        current = [folder / f"{stem}{s}" for s in OUTPUT_SUFFIXES if (folder / f"{stem}{s}").is_file()]
+        if not current:
+            return
+        own = org is None  # (a run passes one Organizer for all its images and records once, at the end)
+        org = org or Organizer(self)
+        prev = folder / PREVIOUS
+        older = sorted(p for p in prev.glob("*") if p.is_file()) if prev.is_dir() else []
+        if older:
+            org.archive(older, folder / PREVIOUS_RUNS / f"{self._run_stamp_of(sha, older)}.zip")
+        for f in current:
+            org.move("output", f, prev / f.name)
+        if own:
+            org._record()
+
+    def _run_stamp_of(self, sha: str, files: list[Path]) -> str:
+        """The date and time of the run that wrote these outputs of an image (for the zip's name)."""
+        rels = {self.rel(f) for f in files}
+        with self.session() as s:
+            q = select(ResultRow, RunRow).join(RunRow, ResultRow.run_id == RunRow.run_id).where(ResultRow.sha256 == sha)
+            stamps = [run.stamp for res, run in s.exec(q)
+                      if {res.labels_path, res.table_path, res.excluded_path} & rels and run.stamp]  # fmt: skip
+        if stamps:
+            return max(stamps)
+        newest = max(f.stat().st_mtime for f in files)
+        return "unknown_" + dt.datetime.fromtimestamp(newest).strftime("%Y%m%d_%H%M%S")
 
     def organize(self, full: bool = False) -> list:
         """Move images and their outputs into raw/ and processed/ by batch (see recap.layout)."""

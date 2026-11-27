@@ -121,6 +121,9 @@ def run_workspace(
     the place of recap.yaml's own sections (the batch and image settings still apply), the outputs
     go to its output.directory (relative to the workspace), there is no spot check, and the run is
     not recorded as the images' results: compare it with `recap report RUN_A RUN_B -m recap.db`."""
+    from recap.modelpath import use_model_root
+
+    use_model_root(ws.root)  # trained models named in its settings: this workspace's (recap-data/models/...)
     config_path = Path(settings_file) if settings_file else ws.settings_path
     try:
         raw, cfg, sha = load_config(config_path)
@@ -150,19 +153,25 @@ def run_workspace(
     from recap.layout import COMPARISONS, RUNS
 
     image_dir = None
+    rotated = None  # an Organizer: the images' earlier outputs moved during this run (recorded at the end)
     if settings_file:  # a comparison run: one flat folder of its own, under processed/comparisons/
         out_dir = ws.output_dir() / COMPARISONS / Path(cfg.output.directory).name
         stamp = new_stamp(out_dir)
     else:  # processed/runs/<stamp>/, and each image's outputs in its own folder
+        from recap.layout import Organizer
+
         stamp = new_stamp(ws.output_dir() / RUNS)
         out_dir = ws.run_dir(stamp)
         folders: dict[Path, Path] = {}
+        rotated = Organizer(ws)
 
         def image_dir(p: Path) -> Path:
-            if p not in folders:
+            if p not in folders:  # (called once per image, just before its new outputs are written)
                 from recap.io import file_sha256
 
-                folders[p] = ws.image_folder(file_sha256(p))
+                sha_p = file_sha256(p)
+                ws.keep_previous_outputs(sha_p, rotated)  # current -> previous/, previous -> previous_runs/<date>.zip
+                folders[p] = ws.image_folder(sha_p)
             return folders[p]
 
     log_file = setup_logging(out_dir, stamp)
@@ -171,6 +180,8 @@ def run_workspace(
                       counter, ws, comparison=settings_file is not None, image_dir=image_dir)  # fmt: skip
     finally:
         close_logging()
+        if rotated is not None:  # (also after a cancel or an error: the records follow the files moved)
+            rotated._record(keep_logs={out_dir / f"run_log_{stamp}.yaml"})  # (this run's log names its new outputs)
     if settings_file:
         return result
     ws.record_run(out_dir / f"run_log_{stamp}.yaml")

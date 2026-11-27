@@ -29,6 +29,7 @@ from recap.config import PipelineConfig
 from recap.errors import Cancelled, RecapError
 from recap.evaluate import Reference, score_config
 from recap.io import file_sha256
+from recap.modelpath import use_model_root
 from recap.pipeline import MODEL_STAGE_SETTINGS
 from recap.workspace import Workspace
 
@@ -92,6 +93,7 @@ def tune(
 ) -> TuneResult:
     from recap.config import load_config
 
+    use_model_root(ws.root)  # (its recap-data/models/..., whatever else is open)
     config_path = ws.settings_path
     raw, cfg, _ = load_config(config_path)
     space = space or DEFAULT_SPACE

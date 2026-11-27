@@ -16,6 +16,7 @@ dist/
 *.czi
 *.lif
 *.nd2
+*.h5
 recap-data/
 raw/
 processed/

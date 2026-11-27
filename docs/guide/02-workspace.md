@@ -94,6 +94,8 @@ The workspace folder has two mirrored trees, one folder per batch in each:
 raw/batches/stain 2026-10-03/day79_01.tif                    the image as acquired (never changed)
 processed/batches/stain 2026-10-03/day79_01/                 everything made from it:
     day79_01_labels.tif  day79_01_nuclei.csv  day79_01_qc.png  day79_01_corrected_1.tif  ...
+    previous/                                                the run before the latest
+    previous_runs/20261120_141500.zip                        each earlier run, zipped
 raw/unbatched/ and processed/unbatched/                      images in no batch yet
 processed/runs/<date>/                                       each run's summary and run log
 processed/reports/<date>/                                    reports

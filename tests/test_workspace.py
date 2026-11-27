@@ -1,6 +1,7 @@
 """The workspace database: scanning a folder, counts, edited masks, models and tuning records."""
 
 import shutil
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -380,3 +381,52 @@ def test_a_copied_older_workspace_takes_nothing_from_the_original(synth_dir, tmp
     assert log["images"][0]["image"] == str(copy / "raw" / "unbatched" / "img1.tif")
     assert log["images"][0]["outputs"]["labels"] == str(own / "img1_labels.tif")
     assert ws.latest_masks(sha1)[1] == own / "img1_labels.tif"
+
+
+def test_previous_run_kept_and_earlier_runs_zipped(synth_dir):
+    import zipfile
+
+    import yaml
+
+    from helpers import make_ws
+
+    make_ws(synth_dir)
+    one = img(synth_dir, "img1.tif")
+    for _ in range(3):
+        assert run_cli("run", synth_dir, "-i", one).exit_code == 0
+    first, second, third = runs(synth_dir)
+    own = synth_dir / "processed" / "unbatched" / "img1"
+    assert (own / "img1_labels.tif").is_file() and (own / "img1_qc.png").is_file()  # latest
+    assert sorted(p.name for p in (own / "previous").iterdir()) == sorted(p.name for p in own.glob("img1_*"))
+    (z,) = (own / "previous_runs").iterdir()  # the first run, zipped, named after its run
+    assert z.name == f"{first.name}.zip" and "img1_labels.tif" in zipfile.ZipFile(z).namelist()
+    ws = Workspace(synth_dir)
+    sha = ws.sha_of(img(synth_dir, "img1.tif"))
+    paths = {Path(r["run_id"]).parent.name: r["labels_path"] for r in ws.image(sha)["results"]}
+    assert paths[third.name].endswith("img1/img1_labels.tif")
+    assert paths[second.name].endswith("img1/previous/img1_labels.tif")
+    assert paths[first.name].endswith(f"previous_runs/{first.name}.zip")
+    log = yaml.safe_load(next(second.glob("run_log_*.yaml")).read_text(encoding="utf-8"))
+    assert log["images"][0]["outputs"]["labels"] == str(own / "previous" / "img1_labels.tif")
+    log = yaml.safe_load(next(third.glob("run_log_*.yaml")).read_text(encoding="utf-8"))
+    assert log["images"][0]["outputs"]["labels"] == str(own / "img1_labels.tif")  # the latest run: its new files
+    assert ws.latest_masks(sha)[1] == own / "img1_labels.tif"
+    # a batch change moves the whole folder, previous/ and previous_runs/ included
+    ws.save_mask(sha, np.ones((200, 300), np.uint16))
+    ws.assign_batch([sha], "B")
+    new = synth_dir / "processed" / "batches" / "B" / "img1"
+    assert (
+        not own.exists() and (new / "previous_runs" / z.name).is_file() and (new / "previous" / "img1_qc.png").is_file()
+    )
+    paths = {Path(r["run_id"]).parent.name: r["labels_path"] for r in ws.image(sha)["results"]}
+    assert paths[second.name] == "processed/batches/B/img1/previous/img1_labels.tif"
+    assert (new / "img1_corrected_1.tif").is_file() and not (new / "previous" / "img1_corrected_1.tif").exists()
+
+
+def test_batch_folder_names_work_everywhere():
+    from recap.layout import group, safe_name
+
+    assert safe_name("stain 2026-10-03") == "stain 2026-10-03"
+    assert safe_name("a/b: c?") == "a_b_ c_" and safe_name("  ..") == "batch"
+    assert safe_name("CON") == "CON_" and safe_name("nul.tif") == "nul.tif_" and safe_name("COM10") == "COM10"
+    assert group(None).as_posix() == "unbatched" and group("x/y").as_posix() == "batches/x_y"

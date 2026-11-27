@@ -35,6 +35,8 @@ errors: used everywhere
 | `workspace` | A folder of images with one settings file (`recap.yaml`: every level of the settings), an optional `.recapignore` and one database (`recap-data/recap.db`): images, runs (and whether each image is up to date), manual counts, corrected masks, batch membership, model versions (and which is used), tuning, reports. `open_workspace`, `init_workspace`; moves settings older versions kept in the database into `recap.yaml` when it opens a workspace. | Yes: the app's data model. The CLI and the app call the same methods. |
 | `settingsfile` | Edit `recap.yaml` keeping its comments (ruamel.yaml): the workspace's own sections and the `batches:` / `images:` entries. | Via `workspace`. |
 | `ignore` | `.recapignore`: which images a workspace leaves out (gitignore-like lines). | Via `workspace`. |
+| `transfer` | Export and import whole settings files (with a backup of recap.yaml; optionally with their trained model in one `.zip`) and StarDist model versions (`.zip` with `recap_model.yaml`; any StarDist model folder or zip can be imported). | Via the CLI and the app. |
+| `modelpath` | Finds a model named in the settings: trained versions are relative to the workspace folder, whatever folder recap was started in. | Via `segment`, `workspace`. |
 | `layout` | Where a workspace keeps its files: `raw/` and `processed/`, mirrored, by batch; `Organizer` moves images and outputs to match batches (and reorganizes older workspaces once), updating the database, recap.yaml's `images:` entries and run logs; `recap-data/moves.csv`. Never moves files from outside the workspace. | Via `workspace`. |
 | `counting` | Manual counting shared by `recap count`, the app and the spot check: recap's adjusted view, saving under the counter's name. | Yes. |
 | `db`, `migrations` | SQLModel tables; version check, backup and Alembic upgrade when a workspace is opened. | Via `workspace`. |
@@ -79,6 +81,7 @@ ws.use_model("stardist", 2); ws.report(); ws.import_count(image, xml_file)
 ws.ignore([image_or_folder]); ws.unignore([...]); ws.images()   # .recapignore; images() leaves ignored ones out
 ws.image_folder(sha); ws.run_dir(stamp); ws.organize()           # processed/.../<image>/, processed/runs/<stamp>/
 ws.current_path(old_path); ws.sha_of(path)                      # follow recap's moves (recap-data/moves.csv)
+ws.keep_previous_outputs(sha)                                   # before a run: current -> previous/, previous -> zip
 ```
 
 ### One image (previews, interactive work)

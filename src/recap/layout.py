@@ -9,6 +9,8 @@
             batches/<batch>/<image name>/     that image's latest outputs and its corrected masks:
                 <name>_labels.tif, <name>_excluded_labels.tif, <name>_nuclei.csv,
                 <name>_excluded.csv, <name>_qc.png, <name>_corrected_<N>.tif
+                previous/                     the outputs of the run before the latest
+                previous_runs/<date_time>.zip each earlier run's outputs, zipped
             unbatched/<image name>/
             runs/<date_time>/                 one run: run log, image summary, all nuclei, spot check
             comparisons/<name>/               runs with another settings file (recap run --settings)
@@ -43,6 +45,9 @@ log = logging.getLogger(__name__)
 
 RAW = "raw"
 PROCESSED = "processed"
+PREVIOUS = "previous"  # in an image's folder: the outputs of the run before the latest
+PREVIOUS_RUNS = "previous_runs"  # in an image's folder: <date_time>.zip of each earlier run
+OUTPUT_SUFFIXES = ("_labels.tif", "_excluded_labels.tif", "_nuclei.csv", "_excluded.csv", "_merges.csv", "_qc.png")
 BATCHES = "batches"
 UNBATCHED = "unbatched"
 RUNS = "runs"
@@ -52,8 +57,14 @@ LAYOUT_VERSION = "1"  # recap-data's meta table: the layout a workspace has been
 TOP = (RAW, PROCESSED)
 
 
+_RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}
+
+
 def safe_name(name: str) -> str:
+    """A batch name as a folder name that works on Windows, macOS and Linux."""
     keep = "".join(c if c.isalnum() or c in " -_.()" else "_" for c in name).strip(" .")
+    if keep.split(".")[0].upper() in _RESERVED:  # (Windows refuses these as names)
+        keep = f"{keep}_"
     return keep or "batch"
 
 
@@ -118,6 +129,8 @@ class Organizer:
         if not (self.inside(old) and self.inside(new)):  # never take files from (or put them) elsewhere
             log.warning("not moving %s: outside the workspace %s", old, self.ws.root)
             return None
+        if new.exists():  # never overwrite
+            new = unique_path(new)
         new.parent.mkdir(parents=True, exist_ok=True)
         try:
             shutil.move(str(old), str(new))
@@ -147,6 +160,33 @@ class Organizer:
             target = unique_path(target)
         return self.move(kind, f, target)
 
+    def archive(self, files: list[Path], zip_path: Path) -> Path | None:
+        """Zip files (names relative to zip_path's grandparent folder kept flat) and remove them once
+        the zip has been written and checked. Everything that named them then names the zip."""
+        import zipfile
+
+        files = [f for f in files if f.is_file() and self.inside(f)]
+        if not files or not self.inside(zip_path):
+            return None
+        zip_path = unique_path(zip_path)
+        zip_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
+                for f in files:
+                    z.write(f, f.name)
+            with zipfile.ZipFile(zip_path) as z:
+                if z.testzip() is not None or sorted(z.namelist()) != sorted(f.name for f in files):
+                    raise OSError("the zip did not check out")
+        except OSError as e:
+            log.warning("could not archive %s (%s); kept as they are", zip_path.name, e)
+            zip_path.unlink(missing_ok=True)
+            return None
+        for f in files:
+            f.unlink()
+            self.moves.append(Move("archived", f.resolve(), zip_path.resolve()))
+            self._prune(f.parent)
+        return zip_path
+
     # ---- what goes where ---------------------------------------------------------------------------
     def raw_folder(self, batch: str | None) -> Path:
         return self.ws.root / RAW / group(batch)
@@ -167,6 +207,12 @@ class Organizer:
             results = s.exec(select(ResultRow)).all()
             run_dirs = {r.run_id: ws.abs(r.out_dir) for r in s.exec(select(RunRow))}
         outputs = self._outputs_from_run_logs() if full else {}
+        masks_of: dict[str, list] = {}
+        for r in masks:
+            masks_of.setdefault(r.sha256, []).append(r)
+        results_of: dict[str, list] = {}
+        for r in results:
+            results_of.setdefault(r.sha256, []).append(r)
         for im in images:
             src = ws.abs(im.path)
             batch = batches.get(im.sha256)
@@ -178,27 +224,26 @@ class Organizer:
                     name = moved.name if moved is not None else name
             folder = self.image_folder(batch, name)
             files: set[Path] = set()
-            for r in masks:
-                if r.sha256 == im.sha256 and r.path:
+            for r in masks_of.get(im.sha256, []):
+                if r.path:
                     files.add(self.here(r.path, ws.data / "masks"))
-            for r in results:
-                if r.sha256 == im.sha256:
-                    files |= {self.here(p, run_dirs.get(r.run_id)) for p in (r.labels_path, r.excluded_path,
-                                                                            r.table_path) if p}  # fmt: skip
+            for r in results_of.get(im.sha256, []):
+                files |= {self.here(p, run_dirs.get(r.run_id)) for p in (r.labels_path, r.excluded_path,
+                                                                        r.table_path) if p}  # fmt: skip
             files |= outputs.get(im.sha256, set())
             files.discard(None)
             done_folders: set[Path] = set()
             for f in sorted(p for p in files if p is not None and p.is_file()):
                 if f.parent.resolve() == folder.resolve():
                     continue
-                old_folder = f.parent
-                if self._is_image_folder(old_folder):  # the image's folder of another batch: move all of it
-                    if old_folder in done_folders:
+                old_folder = self._image_folder_of(f)
+                if old_folder is not None:  # the image's folder of another batch: move all of it
+                    if old_folder.resolve() == folder.resolve() or old_folder in done_folders:
                         continue
                     done_folders.add(old_folder)
-                    for g in sorted(old_folder.iterdir()):
-                        self.move_into("output", g, folder)
-                    _remove_if_empty(old_folder)
+                    for g in sorted(p for p in old_folder.rglob("*") if p.is_file()):  # previous/, previous_runs/ too
+                        self.move("output", g, folder / g.relative_to(old_folder))
+                    _remove_tree_if_empty(old_folder)
                 else:  # an older flat output folder, or recap-data/masks
                     self.move_into("output", f, folder)
         if full:
@@ -209,6 +254,13 @@ class Organizer:
                 for sub in d.iterdir():
                     _remove_if_empty(sub)
         return self.moves
+
+    def _image_folder_of(self, f: Path) -> Path | None:
+        """The image folder (processed/batches/B/IMAGE or processed/unbatched/IMAGE) a file is in, at any depth."""
+        for d in f.parents:
+            if self._is_image_folder(d):
+                return d
+        return None
 
     def _is_image_folder(self, folder: Path) -> bool:
         try:
@@ -282,7 +334,9 @@ class Organizer:
             _remove_if_empty(old_dir)
 
     # ---- keeping everything that names the files up to date ----------------------------------------------
-    def _record(self) -> None:
+    def _record(self, keep_logs: set[Path] | frozenset = frozenset()) -> None:
+        """Update everything that names the moved files. keep_logs: run logs not to rewrite (a run
+        that has just written new outputs where older ones were moved from names the new ones)."""
         if not self.moves and not self.aliases:
             return
         from recap.db import ImageRow, MaskRow, ResultRow, RunRow
@@ -332,7 +386,7 @@ class Organizer:
 
             for old, new in renamed_images:
                 rename_entry(ws.settings_path, "images", old, new)
-        self._rewrite_run_logs(absolute)
+        self._rewrite_run_logs(absolute, {p.resolve() for p in keep_logs})
         if not self.moves:
             return
         moves_csv = ws.data / "moves.csv"
@@ -347,13 +401,13 @@ class Organizer:
         log.info("Moved %d file(s) into the workspace's raw/ and processed/ folders (list: %s).",
                  len(self.moves), moves_csv)  # fmt: skip
 
-    def _rewrite_run_logs(self, absolute: dict[str, str]) -> None:
+    def _rewrite_run_logs(self, absolute: dict[str, str], keep: set[Path] | frozenset = frozenset()) -> None:
         """Run logs name images and outputs by absolute path: point them at the new places."""
         from recap.runlog import dump_yaml
 
         ws = self.ws
         for lf in ws.root.rglob("run_log_*.yaml"):
-            if (ws.data in lf.parents) or not lf.is_file():
+            if (ws.data in lf.parents) or not lf.is_file() or lf.resolve() in keep:
                 continue
             try:
                 rl = yaml.safe_load(lf.read_text(encoding="utf-8"))
@@ -372,6 +426,12 @@ def _replace_strings(x: Any, mapping: dict[str, str]) -> Any:
     if isinstance(x, dict):
         return {k: _replace_strings(v, mapping) for k, v in x.items()}
     return x
+
+
+def _remove_tree_if_empty(folder: Path) -> None:
+    """Remove a folder whose subfolders hold no files any more."""
+    if folder.is_dir() and not any(p.is_file() for p in folder.rglob("*")):
+        shutil.rmtree(folder, ignore_errors=True)
 
 
 def _remove_if_empty(folder: Path) -> None:

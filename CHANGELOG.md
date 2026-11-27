@@ -1,5 +1,46 @@
 # Changelog
 
+## 5.2.0 — 2026-11-25
+Earlier runs kept, and settings files and StarDist models shared between workspaces.
+
+- **Earlier runs are kept.** Before a run writes an image's new outputs, its current outputs move
+  to `previous/` in the image's folder, and what was in `previous/` is zipped into
+  `previous_runs/<date_time>.zip` (named after the run that made it; checked before the files are
+  removed). Corrected masks are never moved. The database and run logs point at the new places
+  (an archived output points at its zip; `recap report` and `recap compare` treat it as not
+  available). A batch change moves `previous/` and `previous_runs/` with the image.
+- **Settings files**: `recap settings export FILE [--with-images]` writes the whole recap.yaml
+  (comments kept, a line saying where it came from; batch settings included; single-image settings
+  only on request). `recap settings import FILE [--with-batches] [--with-images]` makes a file the
+  workspace's settings, after saving the old recap.yaml in `recap-data/settings_backups/`; the
+  workspace keeps its own batch and image settings unless asked. Both say when the settings name
+  a trained model the other workspace does not have. App: Images > More > Export / Import
+  settings file...
+- **Settings with their model**: `recap settings export FILE.zip --with-model` (the app offers it)
+  puts the settings and the trained StarDist version they use in one file; importing it adds the
+  model as the next version of the other workspace (whatever number that is) and points the
+  settings at it. A plain settings file naming a trained model the workspace does not have leaves
+  the workspace's model as it is (with a note), and any change of the model in use is reported.
+- **Fixed: trained models are found from any folder.** recap.yaml names a trained version relative
+  to the workspace (`recap-data/models/stardist/v2`), but it was looked up relative to the folder
+  recap was started in, so a run or the app started elsewhere stopped with "unknown StarDist
+  model". Model paths now resolve against the workspace (new `recap.modelpath`), and models are
+  cached by their full path, so two workspaces' `v1` are not mixed up.
+- **StarDist models**: `recap models export VERSION FILE.zip` writes a version's weights,
+  thresholds and config with `recap_model.yaml` (origin, scores, parent; TensorBoard logs left
+  out). `recap models import FILE [--use] [--note]` adds a recap export, or any StarDist model
+  folder or zip, as the next version (unsafe zip paths are refused). App: Training tab > Export
+  selected version..., Import a model...
+- Commands that take an image (`run -i`, `count`, `batch assign|remove`, `settings set|unset|clear
+  --image`, `settings show`, `import-counts`) accept a path recap has since moved the image from,
+  and say clearly when a path is neither.
+- Moving never overwrites a file (a clash gets `_2`), and an image's folder is moved file by file,
+  subfolders included, so everything that names those files is updated. A run records the moves of
+  its images' earlier outputs once, at its end (also after a cancel), and leaves its own run log
+  as written. Batch folder names avoid names Windows refuses (CON, NUL, COM1, ...).
+- New module `recap.transfer`; tests: `tests/test_transfer.py`, previous runs and zips, the app's
+  export and import. Guide: US-32.
+
 ## 5.1.0 — 2026-11-25
 Raw images and everything recap makes from them in two mirrored folders, by staining batch.
 

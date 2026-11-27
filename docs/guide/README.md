@@ -2,7 +2,7 @@
 
 How to use recap from start to finish, for the lab and for the undergrads who test and develop
 it. Each page follows one stage of the workflow and is organised by the **user stories** of the
-test plan (US-01 to US-31): what you want to do, how to do it in the app and in a terminal, how
+test plan (US-01 to US-32): what you want to do, how to do it in the app and in a terminal, how
 to tell it worked, and what tends to go wrong.
 
 ```mermaid
@@ -33,7 +33,7 @@ go back to counting and correcting whenever the settings change.
 | 4. Guided settings | [Settings for a batch or one image, with a live preview](04-guided-settings.md) | US-13 to US-16 |
 | 5. Tuning | [Let recap find better settings](05-tuning.md) | US-17 |
 | 6. Train and run all | [Model versions, the full run, the report](06-train-and-run-all.md) | US-18 to US-20 |
-| 7. Keep and share work | [Import, move, update, terminal and app together](07-keep-and-share.md) | US-21 to US-25, US-28 |
+| 7. Keep and share work | [Import, move, share settings and models, update, terminal and app together](07-keep-and-share.md) | US-21, US-22, US-32, US-23 to US-25, US-28 |
 | Handoff and testing | [Using the test plan, reporting problems](08-testing-and-handoff.md) | US-26, US-27 |
 | Words used | [Glossary](glossary.md) | |
 

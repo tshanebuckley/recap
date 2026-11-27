@@ -31,6 +31,41 @@ Do not copy `recap-data/` alone: the settings live in `recap.yaml` and the image
 To share only the images, `raw/` is enough (recap never changes it); `processed/` can be made
 again by running recap.
 
+## US-32 Share settings and a trained model with another workspace
+
+*As a lab member, I give my settings and a trained StarDist model to another workspace (mine or a
+colleague's) without copying the images.*
+
+| In the app | In a terminal |
+|---|---|
+| Images > More > **Export settings file...**; answer *Yes* to put the model in the same file | `recap settings export lab.zip --with-model` |
+| In the other workspace: Images > More > **Import settings file...**, choose the `.zip` | `recap settings import lab.zip` |
+| A model on its own: Training > **Export selected version...** / **Import a model...** | `recap models export v2 stardist_v2.zip`, `recap models import stardist_v2.zip --use` |
+
+Exporting settings writes the whole `recap.yaml` with a line saying where it came from. Batch
+settings go with it; single-image settings only if you ask (they name this workspace's files).
+Importing makes the file's settings the workspace's (for every image); the old `recap.yaml` is
+saved in `recap-data/settings_backups/`. The workspace keeps its own batch settings unless you
+choose *Also take the file's batch settings* (`--with-batches`).
+
+With the model in the same `.zip`, importing adds it as the next version of the other workspace
+(whatever number that is there) and makes the imported settings use it. A settings file on its
+own that names a trained model the other workspace does not have leaves that workspace's model as
+it is, and says so. A model export alone is a `.zip` with the weights, thresholds and
+configuration, and a note of where it came from and its scores; `recap models compare` scores it
+on the other workspace's corrected masks. Any StarDist model works too: a folder or `.zip` with
+`config.json` and `weights_best.h5`.
+
+**Done when:** the other workspace's `recap.yaml` has your settings (the old one is in the backup
+folder), the model shows in its Training tab with its note and is *in use*, and a run there gives
+the same counts as yours on the same image.
+
+**Watch out for:**
+- Share settings and the model they use in one `.zip`: the model's version number usually differs
+  in the other workspace, and the `.zip` takes care of that.
+- Importing settings changes every image's settings: run the out-of-date images afterwards.
+- Unpublished models are lab data: do not attach them to GitHub issues.
+
 ## US-23 Update recap without losing work
 
 *As a lab member, my work survives updating recap.*

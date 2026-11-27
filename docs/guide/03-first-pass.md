@@ -16,8 +16,9 @@ corrections for a few. Those few are what everything later is checked against.
 Each image is run with its own settings (recap.yaml → its batch → itself). Each image's tables,
 label images and QC overlay go to its own folder, `processed/batches/<batch>/<image>/` (or
 `processed/unbatched/<image>/`), next to its corrected masks; the run's `image_summary_*.csv`,
-`all_nuclei_*.csv` and run log go to `processed/runs/<date>/` (see US-31). Columns are explained
-in [`docs/output_columns.md`](../output_columns.md).
+`all_nuclei_*.csv` and run log go to `processed/runs/<date>/` (see US-31). Running an image again
+keeps the run before in its folder's `previous/` and zips earlier ones into `previous_runs/`.
+Columns are explained in [`docs/output_columns.md`](../output_columns.md).
 
 **Done when:** counts appear and the state is *up to date*. The example image gives
 **472 nuclei, 248 VRC+**; on Windows or Mac, write down any difference.

@@ -1,4 +1,4 @@
-# recap 5.1.0
+# recap 5.2.0
 
 **recap: Reconstruction of Cellular Architecture and Phenotypes**
 
@@ -32,6 +32,7 @@ recap run [FOLDER]               # run every image with its own settings (-i IMG
 recap status [FOLDER]            # every image: batch, recap's count, up to date?, manual counts, ...
 recap batch assign|remove|list|rename|delete   # staining batches
 recap settings set|unset|clear|show            # settings for the workspace, a batch or an image
+recap settings export|import FILE              # the whole settings file, to share or reuse
 recap count IMG...               # count by hand in Fiji; counts go into the workspace
 recap import-counts IMG [FILE]   # add counts made in plain Fiji (Cell Counter XML, Multi-point CSV, totals)
 recap report [FOLDER]            # recap vs manual counts across all images (or RUN_DIR... -m FILE)
@@ -39,6 +40,7 @@ recap compare RUN_A RUN_B        # two runs, image by image, with overlays
 recap tune [FOLDER]              # better settings, scored against corrected masks (--apply-to)
 recap train [FOLDER]             # a new model version from corrected masks
 recap models list|compare|use    # versions, their scores, and which one the workspace uses
+recap models export|import       # StarDist weights as a .zip, to share or reuse
 recap fiji set|check|show|unset  # the Fiji recap opens for counting
 recap add FILES/FOLDERS [--batch NAME]  # copy images into the workspace, into a batch
 recap ignore [PATH...] / unignore PATH...  # leave images or folders out (.recapignore); no PATH: list
@@ -262,7 +264,9 @@ In the workspace's `processed/` folder (see [Workspaces](#workspaces)):
 - per image, in `processed/batches/<batch>/<image>/` (or `processed/unbatched/<image>/`):
   `<image>_nuclei.csv`, `<image>_excluded.csv`, label images, `<image>_qc.png` (white = VRC−,
   red = VRC+, blue = excluded), and corrected masks (`<image>_corrected_<N>.tif`). These are the
-  image's latest results: a new run replaces them.
+  image's latest results. When a run replaces them, the old ones move to `previous/` in the same
+  folder, and what was in `previous/` is zipped into `previous_runs/<date_time>.zip` (named after
+  the run that made it). Corrected masks are never moved or replaced.
 - per run, in `processed/runs/<date_time>/`: `image_summary_*.csv`, `all_nuclei_*.csv`,
   `run_log_*.yaml` (settings as written / validated / applied, versions, hashes, every image and
   output file), `final_config_*.yaml` (the settings applied: start a workspace from it with
@@ -292,6 +296,8 @@ my-experiment/
     batches/
       stain 2026-10-03/
         day79_01/                    day79_01_labels.tif, _nuclei.csv, _qc.png, _corrected_1.tif, ...
+          previous/                  the run before
+          previous_runs/<date>.zip   earlier runs
     unbatched/
     runs/<date_time>/                run log, summaries, spot check
     comparisons/<name>/              comparison runs (recap run --settings)
@@ -400,6 +406,27 @@ and each records what it was trained on and its validation score. `recap models 
 chosen version into recap.yaml, which makes every result out of date until the images are run
 again. Cellpose training (`--method cellpose`) is written
 against the Cellpose 4 API but has not been run yet.
+
+### Sharing settings and models
+
+```bash
+recap settings export lab.zip --with-model     # the whole recap.yaml + the trained model it uses
+recap settings import lab.zip                  # here: the model becomes the next version, in use
+recap settings export lab_settings.yaml        # the settings alone (with batch settings; --with-images)
+recap settings import lab_settings.yaml        # becomes this workspace's settings (backup in recap-data/)
+recap models export v2 stardist_v2.zip         # a model alone: weights, thresholds, config + its origin
+recap models import stardist_v2.zip --use      # the next version here; --use segments with it
+```
+
+In the app: Images > More > **Export / Import settings file...** (it offers to put the model in
+the same file when the settings use one trained here), and the Training tab's **Export selected
+version...** / **Import a model...**. Importing a settings file replaces the workspace's own
+settings (every image's) and keeps the workspace's batch and single-image settings unless you ask
+for the file's (`--with-batches`, `--with-images`). A settings file alone that names a trained
+model the workspace does not have leaves the workspace's model as it is (and says so); a change of
+the model in use is always reported. `recap models import` also takes any StarDist model (a folder
+or .zip with `config.json` and `weights_best.h5`); `recap models compare` then scores it on your
+corrected masks.
 
 ## Fiji
 

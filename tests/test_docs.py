@@ -163,5 +163,5 @@ def test_relative_links_in_docs_resolve():
     guide = (root / "docs" / "guide" / "README.md").read_text(encoding="utf-8")
     stories = set(re.findall(r"## (US-\d+)", "".join(p.read_text(encoding="utf-8")
                                                      for p in (root / "docs" / "guide").glob("0*.md"))))  # fmt: skip
-    assert stories == {f"US-{i:02d}" for i in range(1, 32)}, sorted(stories)  # every story has a section
-    assert "US-31" in guide
+    assert stories == {f"US-{i:02d}" for i in range(1, 33)}, sorted(stories)  # every story has a section
+    assert "US-32" in guide
