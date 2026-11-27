@@ -11,7 +11,15 @@
 | **Train new version** (Model: stardist; Start from: empty = the model in use, or v1, v2...) | `recap train --epochs 20` (`--start v1`) |
 | **Compare all versions** | `recap models compare` |
 | select the best version, **Use selected version** (or **Use standard model**) | `recap models use v2` (`recap models use standard`) |
-| **Run out-of-date** in the recap tab | `recap run --out-of-date` |
+| **Run out-of-date** in the Images tab | `recap run --out-of-date` |
+
+![The Training tab of the Tuning and training window](../images/training_window.png)
+
+1. **Train new version**, with the model, the version to start from, the epochs and a note above
+   it; progress appears below, then the new version in the table (*in use*, its training and
+   validation images, its score).
+2. **Compare all versions**, **Use selected version**, **Use standard model**.
+3. **Export selected version...**, **Import a model...** (US-32).
 
 Each version is saved in `recap-data/models/stardist/vN` and never overwritten. Images with
 corrected masks are split into training and validation; the new model and the one it started

@@ -1,5 +1,24 @@
 # Changelog
 
+## 5.3.4 — 2026-11-27
+Documentation brought up to date with the code, with pictures of the app.
+
+- **Pictures of every tab** in the user guide, with the buttons numbered and explained under each
+  picture: the window (guide index, README), the Images tab (US-05), Count (US-10), Fix outlines
+  (US-11), Settings (US-13), and the Tuning and Training tabs (US-17, US-18). They show the lab's
+  day-79 example image; the image itself is not in the repository.
+- **The recovery figure** in `docs/pipeline.md`: DAPI, ICP8 and the combined image on a region of
+  the example, with the nuclei that are dim in DAPI circled.
+- `docs/images/make_screenshots.py` makes all of them again from the example image (a demo
+  workspace in a temporary folder, deleted afterwards); see CONTRIBUTING.
+- Fixed in the docs: image paths from before the 5.1 layout (`data/...`) in commands and in the
+  `recap.yaml` example (an image's entry is its path under `raw/`); `input.images` (removed in
+  5.0) in the settings overview; `cd recap-4.1.0`; "the recap tab" (now the Images tab); the
+  story range on the testing page (US-01 to US-32); the glossary's description of `recap-data/`
+  (corrected masks and reports are in `processed/` since 5.1) and of VRC− (no detectable
+  compartments, not necessarily uninfected); the `gui` module's description; the test count in
+  CONTRIBUTING. New: a Linux / NixOS note in the README's install section.
+
 ## 5.3.3 — 2026-11-27
 Fix: the app on NixOS (`EGL not available`, then a traceback from napari on the first image).
 

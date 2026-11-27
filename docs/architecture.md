@@ -48,7 +48,7 @@ errors: used everywhere
 | `train` | Fine-tune StarDist / Cellpose on edited masks; versioned models; comparison. | Yes (Training panel). |
 | `fijicount` | Counting in Fiji (started as its own program with `assets/fiji_count.groovy`). | Yes. |
 | `levels` | Settings per staining batch and image on top of the workspace's: allowed keys, merge, diff, `nest` / `flatten` (recap.yaml's layout), `settings_hash` (the out-of-date check). Stored in recap.yaml by `workspace`. | Yes: the run, tuning, training and guided mode use it. |
-| `gui` (package) | napari plugin (`napari.yaml`): the recap panel (workspace, runs, Manual and Guided modes), Tuning and Training; `recap gui`; one app per user. See `docs/gui.md` for the command behind every button. | It is the GUI. |
+| `gui` (package) | `recap gui`: recap's window (Images, Count, Fix outlines and Settings tabs; Tuning and training in their own window); with `--napari` the 4.3 layout, napari with recap's docked panels (`napari.yaml`); one app per user; the OpenGL check and NixOS driver setup. See `docs/gui.md` for the command behind every button. | It is the GUI. |
 | `desktop` | `recap desktop-icon`: per-OS shortcut that runs `recap gui`; replaces recap's old icons. | Only for the icon command. |
 | `fiji` | Find, save and check the Fiji installation; per-OS launchers and folders. | Via `fijicount`. |
 | `spotcheck` | Random spot check; counting is done by a `counter` callback (Fiji or napari). | Via `runner`. |
@@ -101,7 +101,8 @@ res.n_small_bodies, res.n_excluded, res.merges
 ```
 
 `process_image` is pure: no files, no printing, no global state except a model cache
-(`segment._MODELS`) so StarDist / Cellpose load once per process.
+(`segment._MODELS`) so StarDist / Cellpose load once per process. In the app, StarDist runs in
+the helper process (`stardist_worker`), and its cache is there.
 
 For live previews, run `pipeline.segment_stage` once (the slow part: normalisation and
 StarDist / Cellpose) and `pipeline.finish_stage` for each change of the fast settings

@@ -19,6 +19,22 @@ the **Workspace** list remembers recent ones.
 
 **Done when:** one row per image, state *not run*.
 
+![The Images tab](../images/images_tab.png)
+
+1. **Workspace**: the open workspace (the list remembers recent ones), **Open...**, **New...**.
+2. **Filter**: all images, or only those out of date or not run, not counted by hand, without a
+   corrected mask, or ignored.
+3. **The table**: one row per image: its batch, recap's count (VRC+ in brackets), its *state*,
+   manual counts and who made them, corrected masks, own settings, QC flags. Double-click a row
+   to open the image; Ctrl/Shift-click to select several.
+4. **Run selected**, **Run out-of-date**, **Run all** (US-07).
+5. **Open image**, **Set batch...** (US-06), **Summary** (US-12).
+6. **More**: add images, batches, ignore or stop ignoring, import counts, the report, Fiji
+   location, your name for counts, edit recap.yaml, export or import the settings file, rescan
+   the folder.
+7. **The banner**: the open image's results are out of date (here its own settings changed after
+   the run); **Run this image** brings it up to date.
+
 **Choosing the settings to start from:** copy a settings file that already worked on similar
 images (for the day-79 organoids: `examples/recap.yaml`). Starting from defaults means checking
 the channel numbers yourself: the Settings tab (US-13) shows the result immediately, or open
@@ -67,8 +83,8 @@ deleting them.*
 
 | In the app | In a terminal |
 |---|---|
-| Select images in the table; More > **Ignore selected images** | `recap ignore data/day79_03.tif` (or a folder: `recap ignore old_exports/`) |
-| Filter above the table: **ignored images (N)**; select them, More > **Stop ignoring selected images** | `recap unignore data/day79_03.tif`; `recap ignore` alone lists what is ignored |
+| Select images in the table; More > **Ignore selected images** | `recap ignore raw/unbatched/day79_03.tif` (or a folder: `recap ignore old_exports/`) |
+| Filter above the table: **ignored images (N)**; select them, More > **Stop ignoring selected images** | `recap unignore raw/unbatched/day79_03.tif`; `recap ignore` alone lists what is ignored |
 
 recap writes them to `.recapignore` in the workspace folder, one path per line, like a
 `.gitignore`. You can edit it by hand for patterns: `*_bad.tif` (a name anywhere), `old/` (a
@@ -106,7 +122,7 @@ or none), renaming or deleting a batch moves their raw files and their folders i
 images added go straight into `raw/`; an image you drop anywhere else in the workspace folder is
 moved into `raw/unbatched/` at the next **Rescan folder** (or any run). Ignored images (US-30) are
 left where they are. Every move is listed in `recap-data/moves.csv`, and commands still accept
-an image's old path.
+an image's old path (for example `day79_04.tif`, where it was before recap moved it into `raw/`).
 
 A workspace from recap 5.0 or older is reorganized this way the first time recap 5.1 opens it:
 images from anywhere in the folder, outputs from the old `results/` folder, corrected masks from
@@ -129,7 +145,7 @@ outlines and corrected masks, and its counts and state are unchanged.
 
 | In the app | In a terminal |
 |---|---|
-| Ctrl/Shift-click the images of one staining, **Set batch...**, type a name | `recap batch assign "stain 2026-10-03" data/day79_*.tif` |
+| Ctrl/Shift-click the images of one staining, **Set batch...**, type a name | `recap batch assign "stain 2026-10-03" raw/unbatched/day79_0[1-4].tif` |
 | More > **Batches...**: see each batch's images and settings, **Rename...**, **Delete** | `recap batch list`, `recap batch rename OLD NEW`, `recap batch delete NAME` |
 | Set batch with an empty name takes images out of their batch | `recap batch remove IMAGE...` |
 

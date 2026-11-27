@@ -6,7 +6,7 @@ recap: Reconstruction of Cellular Architecture and Phenotypes.
 
 ```bash
 pixi install            # default environment (StarDist), recap installed in editable mode
-pixi run test           # pytest: 66 tests, under a minute, no Fiji or StarDist model needed
+pixi run test           # pytest: over 100 tests, under a minute, no Fiji needed
 pixi run lint           # ruff check + format check (what CI runs)
 pixi run format         # apply formatting and safe lint fixes
 ```
@@ -88,6 +88,13 @@ tick "keep artifacts" (they are larger than the free plan's Actions storage).
 Start with [`docs/gui.md`](docs/gui.md): how to run it, the code layout, rules (the GUI calls the
 library, Qt-free logic stays testable without a screen) and a list of next steps.
 
+The pictures in `docs/images/` are made by `docs/images/make_screenshots.py` from the day-79
+example image (which is not in the repository): it builds a demo workspace in a temporary
+folder, opens the app, captures each tab with numbered callouts and draws the recovery figure.
+After changing a tab's buttons, run it again (on Linux without a screen:
+`xvfb-run -a -s "-screen 0 1700x1100x24" pixi run python docs/images/make_screenshots.py IMAGE`)
+and update the numbered keys in the guide pages that show the pictures.
+
 ## Linux, Windows and macOS
 
 CI runs the tests on all three, so code has to be portable:
@@ -103,7 +110,8 @@ CI runs the tests on all three, so code has to be portable:
 
 ## Versions and releases
 
-Semantic versioning, set in `src/recap/__init__.py` (and `pixi.toml`):
+Semantic versioning, set in `src/recap/__init__.py` (and `pixi.toml`, `CITATION.cff` and the
+README's title):
 major = a change to the public interface (`docs/architecture.md`) or to existing output
 columns; minor = new features, settings or columns; patch = fixes. Every release gets a
 `CHANGELOG.md` entry. Tag releases `vX.Y.Z`.

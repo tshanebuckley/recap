@@ -4,7 +4,7 @@
 
 | Word | Meaning |
 |---|---|
-| **workspace** | A folder of images with one settings file (`recap.yaml`, all levels of the settings), an optional `.recapignore` (images left out) and recap's folder `recap-data/` (database `recap.db`, corrected masks, model versions, tuning, reports, backups). |
+| **workspace** | A folder of images with one settings file (`recap.yaml`, all levels of the settings), an optional `.recapignore` (images left out) and recap's folder `recap-data/` (database `recap.db`, model versions, tuning, Fiji sessions, backups, `moves.csv`). The images are in `raw/`, everything recap makes from them (including corrected masks and reports) in `processed/`. |
 | **raw/, processed/** | The workspace's two mirrored trees: `raw/batches/<batch>/` holds the images as acquired, `processed/batches/<batch>/<image>/` everything recap made from each (outputs, corrected masks); `unbatched/` in both for images in no batch; `processed/runs/`, `comparisons/`, `reports/` for runs and reports. |
 | **previous/, previous_runs/** | In an image's folder under `processed/`: the outputs of the run before the latest, and each earlier run's outputs zipped as `<date_time>.zip`. Corrected masks are never moved there. |
 | **ignored image** | An image listed in `.recapignore`: kept in the folder and in the database, but not run, counted, tuned, trained on or reported. `recap ignore` / `unignore`, or Ignore in the app. |
@@ -19,7 +19,7 @@
 | **segmentation** | Finding the nuclei's outlines (StarDist by default). |
 | **fragments** | Pieces of one nucleus that the model split; recap can rejoin them. |
 | **filters** | Rules that drop outlines that are not whole, in-focus nuclei (focus, roundness, area, border). |
-| **VRC+ / VRC−** | Nuclei with / without viral replication compartments (ICP8), i.e. infected / not infected. |
+| **VRC+ / VRC−** | Nuclei with / without detectable viral replication compartments (ICP8). VRC+ nuclei are infected; a VRC− nucleus may still be infected at an earlier stage. |
 | **manual count** | Nuclei counted by a person, in Fiji or in the app, stored with their name. |
 | **corrected mask** | recap's outlines for an image after a person fixed them; the reference for tuning and training. |
 | **tuning** | Trying settings and scoring them against corrected masks. |

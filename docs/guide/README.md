@@ -55,22 +55,19 @@ go back to counting and correcting whenever the settings change.
 
 ## The recap window at a glance
 
-```
-[Add images ▾] [Tuning and training]                 [◀] [day79_01.tif  [up to date] ▾] [▶]
-┌──────────────────────────────────────────────┐  ( banner when the image is out of date: [Run this image] )
-│                                              │  [ Images | Count | Fix outlines | Settings ]
-│               the image                      │
-│   scroll = zoom, drag = pan                  │  Images:  Workspace [my-experiment ▾] [Open...] [New...]
-│                                              │           [all images ▾]  filter: out of date, not counted, ...
-│                                              │           image | batch | recap (VRC+) | state | manual | corrected | ...
-│                                              │           [Run selected] [Run out-of-date] [Run all]
-│                                              │           [Open image] [Set batch...] [Summary] [More ▾]
-│                                              │  Count:   click = VRC-, Shift+click = VRC+, right-click = remove
-│                                              │           [Undo] [Clear] [Save count]  [Count this image in Fiji instead]
-│                                              │  Fix outlines: [Draw new] [Delete] [Split] [Merge]  [Undo] [Save corrected mask]
-└──────────────────────────────────────────────┘  Settings: five steps with a live preview; Save to: workspace / batch / this image
-Show: [x] marker (ch 0) [x] ICP8 (ch 1) [x] DAPI (ch 2)  ...  brightness ───○───
-```
+![The recap window: the image on the left, four tabs on the right](../images/window.png)
+
+1. **Add images**: image files or a folder, into a staining batch (US-29).
+2. **Tuning and training**: their own window (US-17, US-18).
+3. **◀ the image list ▶**: the open image and its state; the arrows open the previous or next one.
+4. **The tabs**: **Images** (the workspace, its images, running recap), **Count** (count by
+   clicking), **Fix outlines** (correct recap's outlines), **Settings** (settings with a live
+   preview). Each tab's page in this guide shows it with its buttons numbered the same way.
+5. **Show**: each stain on or off (the channel number is in its name), extras of the current tab
+   such as *excluded nuclei*, and the brightness.
+
+The image is the lab's day-79 organoid example: DAPI blue, ICP8 green, the marker red, recap's
+outlines in thin lines. Scroll to zoom, drag to pan.
 
 Each tab shows only what it needs: no recap outlines while you count, only the preview in
 Settings. Ctrl+1 to Ctrl+4 switch tabs. `recap gui --napari` opens the older layout (full

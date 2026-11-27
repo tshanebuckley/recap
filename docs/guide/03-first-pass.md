@@ -87,7 +87,14 @@ your eye.
 | mark a VRC+ nucleus | Shift+click it (orange point) |
 | remove a point | right-click it |
 | undo the last change | **Undo** or Ctrl+Z |
+| start again | **Clear** (asks first; **Undo** brings the points back) |
 | move around | scroll to zoom, drag to pan (a drag never adds a point) |
+
+![The Count tab while counting](../images/count_tab.png)
+
+1. **Totals**, updated as you click: VRC− (blue points), VRC+ (orange points), total.
+2. **Undo**, **Clear**, **Save count** (under the name shown just above, *Counting as ...*).
+3. **Count this image in Fiji instead** (US-09).
 
 The totals update as you click. **Save count** stores it under your name; **Continue my last
 count** brings back your saved points on that image to carry on.
@@ -109,6 +116,12 @@ Open an image and choose the **Fix outlines** tab. Pick a tool, then:
 | an extra object (debris, a fragment that is not a nucleus) | **Delete** | click it |
 | two nuclei joined into one | **Split** | drag a line across the join, from outside to outside |
 | one nucleus in two pieces | **Merge** | click one piece, then the other |
+
+![The Fix outlines tab](../images/outlines_tab.png)
+
+1. **The tools**: Draw new, Delete, Split, Merge; the chosen one is highlighted.
+2. **What the chosen tool does**, and below it the number of nuclei in the mask.
+3. **Undo**, **Save corrected mask**.
 
 **Undo** (or Ctrl+Z) goes back one edit at a time. While Draw new or Split is chosen, dragging
 draws instead of panning; choose Delete or Merge to pan again. **Save corrected mask** keeps it

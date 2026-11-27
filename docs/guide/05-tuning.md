@@ -15,7 +15,15 @@ masks: how many real nuclei it finds and how few extra ones it adds (F1, from 0 
 | Correct masks on at least 3 images (US-11) | |
 | **Tuning and training** > **Tuning**: **Trials** 30, **Run tuning** | `recap tune --trials 30` |
 | *Use the best settings for:* the workspace or a batch, **Apply** | `recap tune --apply-to workspace` (or `batch:NAME`) |
-| **Run out-of-date** in the recap tab | `recap run --out-of-date` |
+| **Run out-of-date** in the Images tab | `recap run --out-of-date` |
+
+![The Tuning tab of the Tuning and training window](../images/tuning_window.png)
+
+1. **Tuning** and **Training**: the two tabs of the window.
+2. **Trials**: how many combinations to try.
+3. **Run tuning**: the progress, then your current settings' F1 and the best one, and the trials
+   (the best 15, best first: F1, precision, recall, count error, the settings tried) in the table.
+4. **Use the best settings for:** the workspace or a batch; **Apply** writes them into recap.yaml.
 
 The first trial is always your current settings, so "best" is never worse than what you have.
 Every trial is kept (`recap-data/tuning/<date>/trials.csv`); `--seed` makes a search repeatable.

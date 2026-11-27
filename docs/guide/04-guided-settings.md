@@ -20,6 +20,16 @@ preview shows VRC+ nuclei in magenta and VRC− in cyan, with the counts below.
 | 4. Filters | Min focus, min roundness, min / max area, border | Which outlines count as real, whole, in-focus nuclei. |
 | 5. Infection call | VRC+ pixel threshold, VRC+ area fraction | When a nucleus counts as VRC+. |
 
+![The Settings tab with its live preview](../images/settings_tab.png)
+
+1. **The five steps**, each setting with the tag of the level it comes from (*workspace*,
+   *batch* or *image*, US-16) and its value; an optional setting has an *on* box.
+2. **The preview's counts**: nuclei, VRC+, what the filters excluded and why. On the image, VRC+
+   outlines are magenta and VRC− cyan; tick *preview excluded* in the Show bar for the excluded
+   ones, or *recovered (DAPI + ICP8)* for the image the model sees.
+3. **Save to:** the workspace, the image's batch or this image (US-14, US-15); **Save**; **Undo
+   changes** (back to the saved values). The grey line under it says what the choice affects.
+
 What each step does to the image, and why: [How recap counts](../pipeline.md).
 
 Hover any setting for an explanation. Filters and the infection call update in about a second;
@@ -54,10 +64,10 @@ batches:
     normalization:
       vrc_range: [3, 30]
 images:
-  data/day79_04.tif:
+  raw/batches/stain A/day79_04.tif:
     reason: weak ICP8
     by: ana
-    date: 2026-11-25
+    date: '2026-11-25'
     normalization:
       vrc_weight: 1.3
 ```

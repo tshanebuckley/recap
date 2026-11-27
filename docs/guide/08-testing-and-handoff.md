@@ -8,7 +8,7 @@ The test plan is a shared sheet with three tabs:
 
 | Tab | For | Who |
 |---|---|---|
-| **User stories** | the workflow on these pages, US-01 to US-28 | everyone; P1 stories on every lab computer |
+| **User stories** | the workflow on these pages, US-01 to US-32 | everyone; P1 stories on every lab computer |
 | **Technical checks** | CI, installs, edge cases (Fiji closed mid-count, OneDrive, low disk), database upgrades | the developers |
 | **Defects** | anything that failed | whoever found it |
 

@@ -63,6 +63,13 @@ Recovery builds the image the model sees from both channels, so that a nucleus b
 **either** DAPI or ICP8 is visible. Weak-DAPI infected nuclei are *recovered* into the image
 before segmentation.
 
+![Recovery on the day-79 example image](images/recovery.png)
+
+The picture is a region of the lab's day-79 example with the example workspace's settings.
+recap's own outlines found the circled nuclei. Their DAPI is dim, because the chromatin is pushed
+aside, but their ICP8 is bright, so they are clear in the combined image. Nuclei with good DAPI
+look the same in the first and last panels.
+
 ### What it does
 
 1. **DAPI is scaled per image.** Its 1st and 99.8th percentiles (`normalization.dapi_percentiles`)
@@ -132,7 +139,8 @@ batch.*
 ### How to check it
 
 - In the **Settings** tab, turn on the **recovered (DAPI + ICP8)** layer in the Show bar (it is
-  off by default): it is exactly the combined image. It redraws instantly as you change the two
+  off by default; see the [Settings tab picture](guide/04-guided-settings.md#us-13-adjust-settings-step-by-step)):
+  it is exactly the combined image. It redraws instantly as you change the two
   settings. Infected nuclei should look as solid and well-edged as uninfected ones, with dark
   background between nuclei.
 - Then compare the magenta (VRC+) and cyan (VRC−) outlines of the preview with what you see: a

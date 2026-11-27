@@ -1,4 +1,4 @@
-# recap 5.3.3
+# recap 5.3.4
 
 **recap: Reconstruction of Cellular Architecture and Phenotypes**
 
@@ -100,7 +100,7 @@ every environment. Tested with pixi 0.84.2 (Python 3.12). Install pixi first:
 Then, in a terminal (on Windows: PowerShell or Windows Terminal) in the unpacked folder:
 
 ```bash
-cd recap-4.1.0
+cd recap                     # the unpacked folder (recap-<version> from a release zip)
 pixi install                 # default environment: StarDist + Fiji support + desktop app + recap
 pixi run test                # tests, under a minute
 pixi install -e cellpose     # optional: Cellpose environment (CPU PyTorch)
@@ -116,6 +116,10 @@ support (a one-time administrator setting; ask IT if you cannot change it). In s
 write Windows paths with forward slashes (`C:/Users/you/data/*.tif`), which avoids YAML's
 backslash escapes. GPU TensorFlow is not available on native Windows; StarDist runs on the CPU
 (fine for this pipeline), or use WSL2 for GPU.
+
+**Linux notes.** The app draws with OpenGL. On NixOS, `recap gui` finds the system's graphics
+driver in `/run/opengl-driver` by itself (it needs `hardware.graphics.enable = true;`); a VM or
+remote desktop without a GPU needs Mesa. Details: [`docs/gui.md`](docs/gui.md#code) (OpenGL).
 
 **Automatic activation with direnv** (optional; Linux, Mac, WSL2): the repo includes an
 `.envrc` that activates the default pixi environment whenever you `cd` into the folder, so
@@ -193,10 +197,10 @@ pixi run -e cellpose recap run examples --settings examples/other_settings/cellp
                                             # -> examples/processed/comparisons/results_cellpose/
 
 # 2. count by hand: recap opens Fiji; counts go into examples/recap-data/recap.db
-recap count examples/*.tif --by ana --remember
+recap count examples/raw/unbatched/*.tif --by ana --remember
 #    or import counts made in plain Fiji (the app: More > Import counts)
-recap import-counts examples/img01.tif img01_markers.xml --by ben      # Cell Counter
-recap import-counts examples/img02.tif --nuclei 472 --vrc-pos 240     # totals only
+recap import-counts IMAGE markers.xml --by ben          # Cell Counter
+recap import-counts IMAGE --nuclei 472 --vrc-pos 240    # totals only
 
 # 3. report: every run folder of the workspace against every manual count in it
 recap report examples                 # -> examples/processed/reports/<date>/ (the app: More > Report)
@@ -248,7 +252,7 @@ See `config_template.yaml` (or `recap template`) for every key with comments.
 
 | Section | Main settings |
 |---|---|
-| `input` | images, channel indices, `exclude_regions` (blank burned-in timestamps / scale bars) |
+| `input` | channel indices, `exclude_regions` (blank burned-in timestamps / scale bars); which images: every image in the workspace except `.recapignore` |
 | `normalization` | `vrc_range`: fix it per imaging session from an infected control |
 | `segmentation` | `method` (`stardist` recommended; `classical`; `cellpose`), `diameter`, `merge` (false for StarDist), `fragment_merge` |
 | `fragments` | thresholds for `fragment_merge` |
@@ -347,13 +351,17 @@ weak but usable can get its own. Each level changes only what it needs, and the 
 wins: **workspace (recap.yaml) → batch → image**.
 
 ```bash
-recap batch assign "stain 2026-10-03" data/day79_*.tif      # images stained together
+recap batch assign "stain 2026-10-03" raw/unbatched/day79_0[1-4].tif   # images stained together
 recap settings set filters.min_focus=0.6                     # the workspace: written into recap.yaml
 recap settings set normalization.vrc_range="[3, 30]" --batch "stain 2026-10-03"
-recap settings set normalization.vrc_weight=1.5 --image data/day79_04.tif --reason "weak ICP8"
-recap settings show data/day79_04.tif        # effective settings, and where each comes from
-recap settings clear --image data/day79_04.tif               # back to the batch's settings
+recap settings set normalization.vrc_weight=1.5 --image day79_04.tif --reason "weak ICP8"
+recap settings show day79_04.tif             # effective settings, and where each comes from
+recap settings clear --image day79_04.tif                    # back to the batch's settings
 ```
+
+An image can be named by its path now (`raw/batches/stain 2026-10-03/day79_04.tif`, as `recap
+status` shows it) or by any path it had before recap moved it (here `day79_04.tif`, where it was
+when the workspace was made).
 
 All of it is written into `recap.yaml`, after the workspace's own sections:
 
@@ -367,10 +375,10 @@ batches:
     normalization:
       vrc_range: [3, 30]
 images:
-  data/day79_04.tif:
+  raw/batches/stain 2026-10-03/day79_04.tif:
     reason: weak ICP8
     by: ana
-    date: 2026-11-25
+    date: '2026-11-25'
     normalization:
       vrc_weight: 1.5
 ```
@@ -454,9 +462,12 @@ pixi run recap gui path/to/workspace     # a workspace folder
 pixi run recap desktop-icon              # desktop icon that opens the app
 ```
 
+![The recap window](docs/images/window.png)
+
 One window: the image on the left (drawn by [napari](https://napari.org), with only what
 counting and correcting need), and four tabs on the right. Ctrl+1 to Ctrl+4 switch tabs; Ctrl+Z
-undoes the last point or outline edit.
+undoes the last point or outline edit. The [user guide](docs/guide/README.md) shows each tab
+with its buttons numbered.
 
 - **Top bar**: **Add images** (files or a folder; asks which batch, or makes a new one),
   **Tuning and training** (their own window), and ◀ the image list ▶.
