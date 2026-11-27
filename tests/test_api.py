@@ -2,6 +2,7 @@
 
 import numpy as np
 import pandas as pd
+import pytest
 
 import recap
 from helpers import BASE
@@ -35,14 +36,15 @@ def test_run_pipeline_progress_and_cancel(write_config, synth_dir, capsys):
     assert len(summary) == 2  # outputs of finished images are still written
 
 
-def test_run_pipeline_config_error(write_config):
-    bad = write_config("input: {images: [nothing/*.tif]}\n", "bad.yaml")
-    try:
-        run_pipeline(bad)
-    except ConfigError as e:
-        assert "no image matches" in str(e)
-    else:
-        raise AssertionError("ConfigError expected")
+def test_run_pipeline_needs_a_workspace(write_config, tmp_path):
+    lone = write_config("input: {dapi_channel: 0}\n", "my_settings.yaml")  # a settings file, not a workspace
+    with pytest.raises(ConfigError, match="recap init FOLDER --from"):
+        run_pipeline(lone)
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    (empty / "recap.yaml").write_text("input: {}\n", encoding="utf-8")
+    with pytest.raises(ConfigError, match="No images"):
+        run_pipeline(empty)
 
 
 def test_lazy_api_names():
@@ -59,4 +61,4 @@ def test_settings_schema_for_gui_forms(write_config):
     assert "description" in seg["diameter"] and seg["diameter"]["exclusiveMinimum"] == 0
     _, cfg, _ = load_config(write_config(BASE))
     again = PipelineConfig.model_validate(cfg.model_dump(mode="json"))  # form values -> same validation
-    assert again == cfg
+    assert again.model_dump() == cfg.model_dump()

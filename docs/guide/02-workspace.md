@@ -11,9 +11,9 @@
 | **New...** (or **Open...**), choose the folder with your images | `recap init path/to/images --from my_settings.yaml` |
 | If it has no settings yet: **Copy a settings file...** (recommended) or **Start from defaults** | `recap status path/to/images` |
 
-recap creates `recap.yaml` (the settings for every image in the folder, `input.images: []`)
-and `recap-data/`, then lists the images. Images can be in subfolders; recap's own outputs
-(label images, `recap-data/`) are ignored. Next time the app opens this workspace directly, and
+recap creates `recap.yaml` (every setting of the workspace) and `recap-data/`, then lists the
+images: every image in the folder, subfolders included. recap's own outputs (label images,
+`recap-data/`) are skipped; to leave out other images, see US-30. Next time the app opens this workspace directly, and
 the **Workspace** list remembers recent ones.
 
 **Done when:** one row per image, state *not run*.
@@ -58,6 +58,29 @@ them with **Run out-of-date** (or select them, **Run selected**).
 - Copies take disk space; for very large folders, put the images into the workspace folder
   yourself, More > **Rescan folder**, then **Set batch...**.
 - In a script, `recap add` needs `--batch` or `--no-batch` (it cannot ask).
+
+## US-30 Leave images out of the workspace
+
+*As a lab member, I leave some images out of the workspace (and bring them back), without
+deleting or moving them.*
+
+| In the app | In a terminal |
+|---|---|
+| Select images in the table; More > **Ignore selected images** | `recap ignore data/day79_03.tif` (or a folder: `recap ignore old_exports/`) |
+| Filter above the table: **ignored images (N)**; select them, More > **Stop ignoring selected images** | `recap unignore data/day79_03.tif`; `recap ignore` alone lists what is ignored |
+
+recap writes them to `.recapignore` in the workspace folder, one path per line, like a
+`.gitignore`. You can edit it by hand for patterns: `*_bad.tif` (a name anywhere), `old/` (a
+folder), `!old/keep.tif` (bring one back). Ignored images are not run, counted in the spot check,
+tuned or trained on, and are not in reports; their counts and corrected masks are kept for when
+you bring them back.
+
+**Done when:** the ignored images leave the table (they are under *ignored images*), **Run all**
+skips them, and stopping ignoring brings them back with their history.
+
+**Watch out for:** ignoring is for images that should not be analysed at all (wrong stain, test
+exports, duplicates). An image that is valid but weakly stained gets its own settings instead
+(US-15).
 
 ## US-06 Group images stained together into a batch
 

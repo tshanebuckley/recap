@@ -37,9 +37,13 @@ Opening a workspace with a newer recap first copies the database to
 `recap-data/backups/recap_v<old version>_<date>_<time>.db`, then upgrades it, and says so. An
 older recap refuses a workspace used by a newer one. A recap 4.2 folder (with `recap-data/` but
 no `recap.yaml`) is opened with **New...** and *Copy a settings file...* (or
-`recap init FOLDER --from old.yaml`); its workspace-wide settings move into recap.yaml.
+`recap init FOLDER --from old.yaml`); its workspace-wide settings move into recap.yaml. Opening
+a 4.3 or 4.4 workspace with recap 5.0 moves its batch and image settings from the database into
+recap.yaml (under `batches:` and `images:`); an old `input.images` list in recap.yaml is removed,
+and the images it left out are written to `.recapignore`.
 
-**Done when:** the upgrade message appears, the backup exists and nothing is lost. Results
+**Done when:** the upgrade message appears, the backup exists and nothing is lost (batch and
+image settings are now at the end of recap.yaml). Results
 from before 4.3 show as *out of date* (they have no record of their settings): **Run
 out-of-date** once.
 

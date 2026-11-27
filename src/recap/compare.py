@@ -8,7 +8,7 @@ nuclei are matched one-to-one when their overlap (IoU) is at least --iou (defaul
   only_<A/B>   : found by one method only (missed, split or merged by the other)
   infection_agreement : same VRC+/VRC- call on matched nuclei
 It also writes <image>_compare.png: A outlines in magenta, B in green, on the DAPI channel.
-The image path, channels and blanked regions are read from run A's final_config_*.yaml.
+The image paths come from run A's run log; the channels and blanked regions from its final_config_*.yaml.
 """
 
 from __future__ import annotations
@@ -31,6 +31,19 @@ def latest(folder: Path, pattern: str) -> Path:
     if not hits:
         raise RecapError(f"no {pattern} in {folder}: is this a recap output folder?")
     return hits[-1]
+
+
+def run_images(folder: Path) -> list[Path]:
+    """The images of a run folder's latest run: image_files in its run log (recap 5.0), or the
+    input.images that older recap versions wrote into final_config."""
+    try:
+        rl = yaml.safe_load(latest(folder, "run_log_*.yaml").read_text(encoding="utf-8")) or {}
+    except RecapError:
+        rl = {}
+    if rl.get("image_files"):
+        return [Path(p) for p in rl["image_files"]]
+    raw = yaml.safe_load(latest(folder, "final_config_*.yaml").read_text(encoding="utf-8")) or {}
+    return [Path(p) for p in (raw.get("input") or {}).get("images") or []]
 
 
 def match(a: np.ndarray, b: np.ndarray, iou_min: float) -> list[tuple[int, int, float]]:
@@ -61,7 +74,7 @@ def compare_runs(
     cfg = PipelineConfig.model_validate(
         yaml.safe_load(latest(run_a, "final_config_*.yaml").read_text(encoding="utf-8"))
     )
-    images = {Path(p).stem: Path(p) for p in cfg.input.images}
+    images = {p.stem: p for p in run_images(run_a)}
     sa = pd.read_csv(latest(run_a, "image_summary_*.csv"))
     sb = pd.read_csv(latest(run_b, "image_summary_*.csv"))
 

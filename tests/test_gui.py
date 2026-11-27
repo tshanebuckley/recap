@@ -35,9 +35,10 @@ def test_example_workspace_is_found():
 
     ex = example_workspace()
     assert ex is not None and (ex / "recap.yaml").is_file()
-    from recap.config import load_config
+    from recap.config import deprecation_notes, load_config
 
-    assert load_config(ex / "recap.yaml")[1].input.images == []  # every image in the folder
+    cfg = load_config(ex / "recap.yaml")[1]
+    assert cfg.segmentation.method == "stardist" and not deprecation_notes(cfg)  # no input.images: every image
 
 
 def test_add_layers_order_and_editing():

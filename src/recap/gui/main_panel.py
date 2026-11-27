@@ -44,11 +44,12 @@ from recap.gui.guided import PREVIEW_LAYERS, GuidedPage
 
 COUNT_LAYERS = {0: ("count: VRC-", "deepskyblue"), 1: ("count: VRC+", "orange")}
 GUIDED_ONLY = (*PREVIEW_LAYERS, "recovered (DAPI + ICP8)")
-FILTERS = {
-    "all images": lambda r: True,
-    "out of date or not run": lambda r: r["state"] != "up to date",
-    "not counted by hand": lambda r: not r["manual_counts"],
-    "no corrected mask": lambda r: not r["edited_masks"],
+FILTERS = {  # (ignored images only under "ignored images")
+    "all images": lambda r: r["state"] != "ignored",
+    "out of date or not run": lambda r: r["state"] not in ("up to date", "ignored"),
+    "not counted by hand": lambda r: not r["manual_counts"] and r["state"] != "ignored",
+    "no corrected mask": lambda r: not r["edited_masks"] and r["state"] != "ignored",
+    "ignored images": lambda r: r["state"] == "ignored",
 }
 
 
@@ -137,6 +138,8 @@ class RecapPanel(QWidget):
             ("Add image files...", lambda: self.add_images(False)),
             ("Add a folder of images...", lambda: self.add_images(True)),
             ("Batches...", self.show_batches),
+            ("Ignore selected images", lambda: self.set_ignored(True)),
+            ("Stop ignoring selected images", lambda: self.set_ignored(False)),
             ("Import counts (Cell Counter XML / CSV)...", self.import_counts),
             ("Report: recap vs manual counts", self.make_report),
             ("Fiji location...", self.fiji_location),
@@ -259,7 +262,7 @@ class RecapPanel(QWidget):
         if ws is None:
             return
         all_rows = ws.status()
-        keep = FILTERS[self.filter.currentText()]
+        keep = list(FILTERS.values())[max(self.filter.currentIndex(), 0)]
         rows = [r for r in all_rows if keep(r)]
         C.fill(
             self.table,
@@ -272,8 +275,13 @@ class RecapPanel(QWidget):
             [r["sha256"] for r in rows],
         )  # fmt: skip
         for i, r in enumerate(rows):
-            if r["state"] != "up to date":  # out of date, not run, unknown
+            if r["state"] == "ignored":
+                for c in range(self.table.columnCount()):
+                    self.table.item(i, c).setForeground(QColor("gray"))
+            elif r["state"] != "up to date":  # out of date, not run, unknown
                 self.table.item(i, 3).setForeground(QColor("#e8a33d"))
+        n_ignored = sum(r["state"] == "ignored" for r in all_rows)
+        self.filter.setItemText(self.filter.count() - 1, f"ignored images ({n_ignored})")
         self._banner(all_rows)
 
     def _banner(self, rows=None) -> None:
@@ -287,6 +295,23 @@ class RecapPanel(QWidget):
             f"{r['name']}: its settings changed since it was run; the outlines and counts shown are old."
         )  # fmt: skip
         self.banner.show()
+
+    def set_ignored(self, ignored: bool) -> None:
+        """Ignore the selected images (written to .recapignore), or bring them back."""
+        ws, shas = C.STATE.workspace, self.selected_shas()
+        if ws is None or not shas:
+            return self.say("Select images in the table first (Ctrl/Shift-click for several).")
+        paths = [ws.image_path(sha) for sha in shas]
+        try:
+            done = ws.ignore(paths) if ignored else ws.unignore(paths)
+        except RecapError as e:
+            return self.say(str(e))
+        if ignored:
+            self.say(f"{len(done)} image(s) ignored: not run, counted, tuned or trained on (see 'ignored images' "
+                     "above the table; .recapignore in the workspace).")  # fmt: skip
+        else:
+            self.say(f"{len(done)} image(s) back in the workspace.")
+        C.STATE.changed()
 
     def selected_shas(self) -> list[str]:
         rows = sorted({i.row() for i in self.table.selectedItems()})

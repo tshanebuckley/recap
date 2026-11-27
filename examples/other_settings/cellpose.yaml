@@ -1,9 +1,8 @@
 # Cellpose version of the example workspace's recap.yaml (identical except segmentation.method),
-# to compare methods: pixi run -e cellpose recap run examples/other_settings/cellpose.yaml
-# then: recap report examples/results examples/results_cellpose -m examples/recap-data/recap.db
-# A settings file that is not a workspace's recap.yaml runs on its own: no batch or image settings.
+# to compare methods on the workspace's images (a comparison run: the images' results stay StarDist's):
+#   pixi run -e cellpose recap run examples --settings examples/other_settings/cellpose.yaml
+#   recap report examples/results examples/results_cellpose -m examples/recap-data/recap.db
 input:
-  images: [../Experiment_Hippoc_org_day_79_Acute_VimentinR_ICP8_G.tif]
   dapi_channel: 2          # blue
   vrc_channel: 1           # green = ICP8
   neuron_channel: 0        # red = vimentin (glial/progenitor marker, NOT neuronal; stored as neuron_ring_mean)
@@ -26,4 +25,4 @@ filters:
   exclude_border: true     # image edge + exclude_regions boxes ...
   border_max_missing: 0.15 # ... but keep border nuclei estimated <= 15% clipped
 output:
-  directory: ../results_cellpose
+  directory: results_cellpose   # relative to the workspace (examples/)

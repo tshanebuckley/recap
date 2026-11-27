@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import glob
 import hashlib
 import logging
 import re
@@ -34,17 +33,12 @@ class StrictModel(BaseModel):
 
 
 class InputConfig(StrictModel):
-    images: list[str] = Field(
-        default_factory=list,
-        description="Image paths or glob patterns. In a workspace's recap.yaml, empty = every image in the folder.",
-    )
+    # removed in 5.0 (a workspace is every image in its folder, minus .recapignore); see deprecation_notes
+    images: list[str] | None = Field(None, exclude=True)
     dapi_channel: int = Field(0, ge=0)
     vrc_channel: int = Field(1, ge=0)
     neuron_channel: int | None = Field(None, ge=0)
-    use_workspace_settings: bool = Field(
-        True,
-        description="In a workspace: apply the batch and image settings stored in it.",
-    )
+    use_workspace_settings: bool | None = Field(None, exclude=True)  # removed in 5.0; see deprecation_notes
     exclude_regions: list[tuple[int, int, int, int]] = Field(
         default_factory=list,
         description="[y0, y1, x0, x1] boxes set to 0 in all channels (burned-in timestamps, scale bars).",
@@ -61,19 +55,6 @@ class InputConfig(StrictModel):
                     f"exclude_regions entries must be [y0, y1, x0, x1] with y0<y1, x0<x1; got {[y0, y1, x0, x1]}"
                 )
         return self
-
-    def resolve_paths(self, base: Path) -> list[Path]:
-        if not self.images:
-            raise FileNotFoundError("input.images lists no images (only a workspace's recap.yaml may leave it empty)")
-        paths: list[Path] = []
-        for pattern in self.images:
-            p = Path(pattern)
-            full = str(p if p.is_absolute() else base / p)
-            hits = sorted(glob.glob(full))
-            if not hits:
-                raise FileNotFoundError(f"no image matches '{pattern}' (looked for {full})")
-            paths += [Path(h) for h in hits]
-        return paths
 
 
 class NormalizationConfig(StrictModel):
@@ -298,19 +279,26 @@ def deprecation_notes(cfg: PipelineConfig) -> list[str]:
             + ". Tune with `recap tune` or the Tuning panel in `recap gui`."
             + (" interactive.fiji is used as validation.fiji." if cfg.interactive.fiji else "")
         )
+    if cfg.input.images:
+        notes.append(
+            "input.images was removed in recap 5.0 and is ignored: a workspace is every image in its folder. "
+            "To leave images out, list them in the workspace's .recapignore (recap ignore IMAGE, or Ignore in the app)."
+        )
+    if cfg.input.use_workspace_settings is not None:
+        notes.append(
+            "input.use_workspace_settings was removed in recap 5.0 and is ignored: the batch and image "
+            "settings are in recap.yaml (batches: and images:), so delete them there to stop using them."
+        )
     return notes
 
 
 TEMPLATE = """\
 # recap (Reconstruction of Cellular Architecture and Phenotypes) configuration
 input:
-  images:                 # paths or globs, relative to this file (a workspace's recap.yaml: [] = all its images)
-    - data/*.tif
   dapi_channel: 0         # 0-based channel indices
   vrc_channel: 1          # ICP8 / ICP4 / click-labelled viral DNA
   neuron_channel: null    # e.g. 2 for MAP2 or bIII-tubulin; null to skip
   exclude_regions: []     # [y0, y1, x0, x1] boxes blanked before analysis (timestamps, scale bars)
-  use_workspace_settings: true  # in a workspace: apply its batch and image settings
 
 normalization:
   dapi_percentiles: [1.0, 99.8]
@@ -393,15 +381,13 @@ output:
 
 def workspace_template() -> str:
     """The settings file of a new workspace (recap.yaml): every image in the folder."""
-    lines = TEMPLATE.splitlines(keepends=True)
-    i = next(k for k, ln in enumerate(lines) if ln.startswith("  images:"))
-    lines[i : i + 2] = ["  images: []              # [] = every image in this folder; or globs relative to it\n"]
-    out = "".join(lines).replace(
+    return TEMPLATE.replace(
         "# recap (Reconstruction of Cellular Architecture and Phenotypes) configuration\n",
-        "# recap workspace settings: every image in this folder. Batches and single images can change\n"
-        "# some of these (recap settings set, or Guided mode in the app); this file is the default.\n",
+        "# recap workspace settings: every image in this folder (except those in .recapignore).\n"
+        "# Staining batches and single images can change some of these values: they are kept at the\n"
+        "# end of this file under batches: and images: (the app's Settings tab and `recap settings set`\n"
+        "# write them there).\n",
     )
-    return out
 
 
 def load_config(path: Path) -> tuple[dict[str, Any], PipelineConfig, str]:
@@ -416,5 +402,15 @@ def load_config(path: Path) -> tuple[dict[str, Any], PipelineConfig, str]:
                 "paths with forward slashes (C:/Users/me/data/*.tif), in single quotes, or unquoted."
             )
         raise ConfigError(f"{path} is not valid YAML:\n{e}{hint}") from e
-    cfg = PipelineConfig.model_validate(raw)
+    cfg = PipelineConfig.model_validate(base_settings(raw))
     return raw, cfg, hashlib.sha256(text.encode()).hexdigest()
+
+
+LEVEL_SECTIONS = ("batches", "images")  # a workspace's recap.yaml: the settings of each batch and image
+
+
+def base_settings(raw: dict[str, Any]) -> dict[str, Any]:
+    """A settings file's own settings, without the batches: and images: sections."""
+    if not isinstance(raw, dict):
+        raise ConfigError("a settings file must be a mapping of sections (input:, filters:, ...)")
+    return {k: v for k, v in raw.items() if k not in LEVEL_SECTIONS}

@@ -1,5 +1,47 @@
 # Changelog
 
+## 5.0.0 — 2026-11-25
+Every setting in recap.yaml, images left out with .recapignore, and every run in a workspace.
+Major version: `recap run` / `run_pipeline` no longer run a settings file on its own, and the
+database layout changes (an older recap cannot open a workspace once 5.0 has used it).
+
+- **All settings in recap.yaml.** Batch and single-image settings move from the database into
+  the workspace's recap.yaml, under `batches:` (each batch's note and values) and `images:` (each
+  image's reason, who saved it and when, and its values), after the workspace's own sections.
+  The app's Settings tab (Save to workspace / batch / this image), `recap settings set|unset|clear`,
+  renaming and deleting batches, and tuning all write there, keeping the file's comments. An
+  image's entry follows the file when it is moved or renamed inside the workspace. The database
+  keeps which image is in which batch.
+- **Upgrading a 4.3 / 4.4 workspace:** opening it copies its batch and image settings (and batch
+  notes) from the database into recap.yaml, then backs up and upgrades the database (migration
+  0004 removes the `level_settings` table and `batches.note`). 4.2's workspace-wide settings in
+  the database still move into recap.yaml as before.
+- **`input.images` is gone.** A workspace is every image in its folder and subfolders, except
+  those listed in **`.recapignore`** (gitignore-like: paths, `folder/`, `*_bad.tif`, `!path`).
+  New: `recap ignore PATH...` (no path: list what is ignored), `recap unignore PATH...`, and in
+  the app More > **Ignore selected images** / **Stop ignoring selected images** with the table
+  filter **ignored images (N)**. Ignored images keep their counts and masks but are not run,
+  counted in the spot check, tuned, trained on or reported; `recap run -i` refuses them. An old
+  recap.yaml's `input.images` is removed when the workspace is opened, and if it listed only
+  some images, the others are written to `.recapignore`. `recap init --from FILE` does not copy
+  `input.images` or another workspace's `images:` section.
+- **`input.use_workspace_settings` is gone** (ignored with a note): remove a batch's or image's
+  entry from recap.yaml instead.
+- **Every run happens in a workspace.** `recap run FILE.yaml` and `run_pipeline(FILE)` refuse a
+  settings file that is not a workspace's recap.yaml and say how to make one (`recap init FOLDER
+  --from FILE`). `recap validate FILE` still checks a settings file on its own. `recap template`
+  writes a file to start workspaces from. Comparing methods: `recap run FOLDER --settings
+  other.yaml` (a comparison run: that file's settings in place of recap.yaml's own sections,
+  outputs in its output folder, no spot check, not recorded as the images' results).
+  `examples/other_settings/cellpose.yaml` is used this way.
+- Run logs list the run's images (`image_files`); `final_config_*.yaml` no longer does (it is the
+  settings applied). `recap report` and `recap compare` read the image list from the run log,
+  and still read older run folders.
+- `config_template.yaml` is regenerated from `recap template` (it had drifted), and a test keeps
+  them the same.
+- Tests: the old 4.4 database upgraded into recap.yaml; batches renamed, deleted and moved images
+  in recap.yaml; `.recapignore` from the library, the command line and the app; comparison runs.
+
 ## 4.4.0 — 2026-11-25
 recap's own window instead of the full napari window, and adding images into batches.
 

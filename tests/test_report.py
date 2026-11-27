@@ -8,8 +8,8 @@ from test_import import CENTRES, cell_counter_xml
 
 def test_report_end_to_end(write_config, synth_dir):
     imgs = "input: {images: [data/img1.tif, data/img2.tif, data/img3.tif]}\nnormalization: {vrc_range: [150, 3000]}\n"
-    run_cli("run", write_config(imgs + "output: {directory: run_all}\n", "a.yaml"))
-    run_cli("run", write_config(imgs + "filters: {min_circularity: 0.8}\noutput: {directory: run_strict}\n", "b.yaml"))
+    run_cli("run", write_config(imgs + "output: {directory: run_all}\n"))
+    run_cli("run", write_config(imgs + "filters: {min_circularity: 0.8}\noutput: {directory: run_strict}\n"))
     mfile = synth_dir / "manual_counts.csv"
     for i in (1, 2):
         img = synth_dir / "data" / f"img{i}.tif"
@@ -63,7 +63,7 @@ def test_report_end_to_end(write_config, synth_dir):
     assert "## Program vs manual" in md and "## Methods vs each other" in md and "## Between counters" in md
 
 
-def test_report_without_manual_and_bad_names(write_config, synth_dir):
+def test_report_without_manual_and_bad_names(write_config, synth_dir, tmp_path_factory):
     run_cli(
         "run",
         write_config(
@@ -75,5 +75,6 @@ def test_report_without_manual_and_bad_names(write_config, synth_dir):
     assert not (synth_dir / "rep2" / "summary.csv").exists()
     res = run_cli("report", synth_dir / "solo", "-n", "a", "-n", "b", "-o", synth_dir / "rep3")
     assert res.exit_code == 1
-    res = run_cli("report", synth_dir / "data", "-o", synth_dir / "rep4")  # not an output folder
+    elsewhere = tmp_path_factory.mktemp("not_output")  # neither an output folder nor in a workspace
+    res = run_cli("report", elsewhere, "-o", synth_dir / "rep4")
     assert res.exit_code == 1 and "recap output folder" in res.output

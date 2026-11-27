@@ -58,13 +58,16 @@ renamed copies still match.
 
 ### Comparing two methods
 
-To compare StarDist with Cellpose on the same images without changing the workspace:
+To compare StarDist with Cellpose on the same images without changing the workspace's results:
 
 ```bash
-pixi run -e cellpose recap run examples/other_settings/cellpose.yaml   # its own settings file and output folder
+pixi run -e cellpose recap run examples --settings examples/other_settings/cellpose.yaml   # -> examples/results_cellpose/
 recap report examples/results examples/results_cellpose -n stardist -n cellpose -m examples/recap-data/recap.db
 recap compare examples/results examples/results_cellpose               # image by image, with overlays
 ```
 
-A settings file that is not the workspace's recap.yaml runs on its own: no batch or image
-settings. Keep such files outside the image folder or in a subfolder such as `other_settings/`.
+`--settings` makes a comparison run: the workspace's images (not the ignored ones), with their
+batch and image settings, but that file's settings in place of recap.yaml's own sections, into
+that file's output folder (relative to the workspace). There is no spot check, and the images'
+results and *up to date* state stay those of the workspace's own runs. Keep such files in a
+subfolder such as `other_settings/`.

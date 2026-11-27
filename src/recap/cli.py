@@ -22,8 +22,10 @@ app = typer.Typer(
     no_args_is_help=True,
     help="recap (Reconstruction of Cellular Architecture and Phenotypes): count nuclei and score "
     "HSV-1 infection (VRC+) in fluorescence images.\n\n"
-    "A workspace is a folder of images with one settings file (recap.yaml) and one database "
-    "(recap-data/recap.db). Start with `recap init FOLDER` (or `recap gui` and New... in the recap panel), "
+    "A workspace is a folder of images with one settings file (recap.yaml: every setting, also those of "
+    "batches and single images), one database (recap-data/recap.db: runs, counts, masks, models) and "
+    "optionally .recapignore (images to leave out). Start with `recap init FOLDER` (or `recap gui` and "
+    "New... in the Images tab), "
     "check it with `recap validate FOLDER`, then `recap run FOLDER`. Commands use the workspace of the "
     "current folder when none is given. Run `recap COMMAND --help` for details; the full guide is README.md.",
 )
@@ -68,10 +70,10 @@ def template(
     path: Annotated[Path, typer.Argument(help="Where to write the template.")] = Path("config.yaml"),
     force: Annotated[bool, typer.Option("--force", help="Overwrite an existing file.")] = False,
 ) -> None:
-    """Write a commented settings file (for a run outside a workspace; for a workspace use `recap init`).
+    """Write a commented settings file, to start workspaces from: `recap init FOLDER --from FILE`.
 
-    Every setting is listed with its default and a short explanation. Image paths in the file
-    are relative to the file's own folder.
+    Every setting is listed with its default and a short explanation. (A new workspace without
+    --from gets the same settings.)
     """
     if path.exists() and not force:
         _fail(f"{path} exists; use --force to overwrite.")
@@ -120,9 +122,11 @@ def init(
     """Make a folder of images a workspace: its settings file recap.yaml and recap-data/.
 
     \b
-    recap.yaml holds the settings for every image in the folder (input.images: [] means all of
-    them). Batches and single images can then change some values (recap settings, or Guided mode
-    in the app). Starting from an existing settings file copies it; its output folder is kept.
+    recap.yaml holds the settings for every image in the folder (list images to leave out in
+    .recapignore: recap ignore). Batches and single images can then change some values (recap
+    settings set, or the app's Settings tab); those are written into recap.yaml too, under
+    batches: and images:. Starting from an existing settings file copies it; its output folder
+    is kept.
     Example:
       recap init experiment --from old_settings.yaml
     """
@@ -135,7 +139,7 @@ def init(
     n = len(ws.status())
     typer.echo(f"Workspace ready: {ws.root}\n  settings: {ws.settings_path}\n  database: {ws.db_path}\n  {n} image(s)")
     if from_ is None:
-        typer.echo("Check the channel numbers in recap.yaml (or in the app's Guided mode) before running.")
+        typer.echo("Check the channel numbers in recap.yaml (or in the app's Settings tab) before running.")
 
 
 def _interactive() -> bool:
@@ -211,12 +215,61 @@ def add(
 
 
 @app.command()
-def validate(target: WsArg = Path(".")) -> None:
-    """Check a workspace's settings (or a settings file) without running anything.
+def ignore(
+    paths: Annotated[list[Path] | None, typer.Argument(help="Images or folders inside the workspace.")] = None,
+    workspace: Annotated[
+        Path,
+        typer.Option("--workspace", "-w", exists=True, file_okay=False, help="Workspace (default: current folder's)."),
+    ] = Path("."),
+) -> None:
+    """Leave images (or whole folders) out of the workspace; without paths, list what is ignored.
 
-    Prints every setting as it will be used (defaults and derived values filled in) and the
-    number of images. Exits with status 1 if the settings are invalid.
+    \b
+    They are written to the workspace's .recapignore (one path or pattern per line; edit it by hand
+    for patterns such as *_bad.tif). Ignored images are not run, counted, tuned or trained on and
+    are not in reports; what recap knows about them is kept. The app's Ignore does the same.
+    Examples:
+      recap ignore data/day79_03.tif
+      recap ignore old_exports/
+      recap unignore data/day79_03.tif
     """
+    ws = _ws(paths[0] if paths else workspace, settings=False)
+    if not paths:
+        rules = ws.ignore_list.rules()
+        ignored = [r for r in ws.status() if r["state"] == "ignored"]
+        typer.echo(f"{ws.ignore_list.path}: " + (", ".join(rules) if rules else "nothing ignored"))
+        for r in ignored:
+            typer.echo(f"  {r['path']}")
+        return
+    try:
+        done = ws.ignore(paths)
+    except RecapError as e:
+        _fail(f"ERROR: {e}")
+    typer.echo(f"Ignored: {', '.join(done)}" if done else "Already ignored.")
+
+
+@app.command()
+def unignore(
+    paths: Annotated[list[Path], typer.Argument(help="Ignored images or folders inside the workspace.")],
+) -> None:
+    """Bring ignored images (or folders) back into the workspace (see `recap ignore`)."""
+    ws = _ws(paths[0], settings=False)
+    try:
+        done = ws.unignore(paths)
+    except RecapError as e:
+        _fail(f"ERROR: {e}")
+    typer.echo(f"Back in the workspace: {', '.join(done)}" if done else "None of them was ignored.")
+
+
+@app.command()
+def validate(target: WsArg = Path(".")) -> None:
+    """Check a workspace's settings (or a settings file to start one from) without running anything.
+
+    Prints every setting as it will be used (defaults and derived values filled in) and, for a
+    workspace, the number of images (and of ignored ones). Exits with status 1 if the settings
+    are invalid.
+    """
+    ws = None
     if _is_workspace_target(target):
         ws = _ws(target)
         cfg = ws.settings()
@@ -225,15 +278,18 @@ def validate(target: WsArg = Path(".")) -> None:
     else:
         try:
             _, cfg, _ = load_config(target)
-            paths = cfg.input.resolve_paths(target.parent)
-        except (ValidationError, ConfigError, FileNotFoundError) as e:
+        except (ValidationError, ConfigError) as e:
             _fail(f"Invalid configuration:\n{e}")
     for note in deprecation_notes(cfg):
         typer.echo(f"note: {note}", err=True)
     resolved = cfg.model_dump(mode="json")
     resolved["segmentation"] = cfg.segmentation.resolved().model_dump(mode="json")
     typer.echo(yaml.safe_dump(resolved, sort_keys=False, default_flow_style=None))
-    typer.echo(f"OK: {len(paths)} image(s) found.")
+    if ws is None:
+        typer.echo(f"OK. Start a workspace from it: recap init FOLDER --from {target}")
+        return
+    n_ignored = len(ws.image_files(include_ignored=True)) - len(paths)
+    typer.echo(f"OK: {len(paths)} image(s) found" + (f", {n_ignored} ignored (.recapignore)." if n_ignored else "."))
 
 
 def _terminal_decide(text: str) -> str:
@@ -255,6 +311,15 @@ def run(
         bool, typer.Option("--out-of-date", help="Only images not run yet or whose settings changed since.")
     ] = False,
     no_spot_check: Annotated[bool, typer.Option("--no-spot-check", help="Skip the manual spot check.")] = False,
+    settings: Annotated[
+        Path | None,
+        typer.Option(
+            "--settings",
+            exists=True,
+            dir_okay=False,
+            help="Comparison run: this settings file instead of recap.yaml's own sections.",
+        ),  # fmt: skip
+    ] = None,
 ) -> None:
     """Run recap on a workspace: every image with its own settings (recap.yaml → batch → image).
 
@@ -264,52 +329,46 @@ def run(
     measure, filter, call VRC+. Outputs go to output.directory: per-image tables, label images,
     QC overlays, a batch summary with QC flags and count ranges, a run log, and a re-runnable final
     config; the results are recorded in the workspace. See docs/output_columns.md for every column.
-    A settings file that is not a workspace's recap.yaml runs on its own (no batch or image settings).
-    """
-    import tempfile
+    Images in the workspace's .recapignore are left out.
 
+    \b
+    Comparing methods: recap run FOLDER --settings other.yaml runs the same images (with their batch
+    and image settings) using other.yaml instead of recap.yaml's own sections, into other.yaml's
+    output.directory, without the spot check and without replacing the images' results. Then:
+      recap report FOLDER/results FOLDER/results_other -m FOLDER/recap-data/recap.db
+    """
     from recap.fijicount import FijiCounter, FijiSession
     from recap.io import file_sha256
-    from recap.runner import run_pipeline, run_workspace
+    from recap.runner import run_workspace
 
-    ws = None
-    if _is_workspace_target(target):
-        ws = _ws(target)
-        cfg = ws.settings()
-        loc = None
-        if cfg.validation.enabled and not no_spot_check:  # Fiji is needed only for the spot check
-            try:
-                loc = ws.fiji()
-            except RecapError as e:
-                _fail(f"Invalid configuration:\n{e}")
-        session = FijiSession(loc.folder if loc else None,
-                              ws.folder("fiji") / f"session_{dt.datetime.now():%Y%m%d_%H%M%S}")  # fmt: skip
-    else:
-        if image or out_of_date:
-            _fail("--image and --out-of-date need a workspace (recap init).")
+    if not _is_workspace_target(target):
+        _fail(f"{target.name} is a settings file, not a workspace. Every run happens in a workspace:\n"
+              f"  recap init FOLDER --from {target}    (FOLDER: the folder of your images)\n"
+              f"  recap run FOLDER")  # fmt: skip
+    ws = _ws(target)
+    cfg = ws.settings()
+    loc = None
+    if cfg.validation.enabled and not no_spot_check:  # Fiji is needed only for the spot check
         try:
-            _, cfg, _ = load_config(target)
-            loc = fiji.resolve_fiji(cfg.validation.fiji, target.parent)
-        except (ValidationError, ConfigError, ValueError) as e:
+            loc = ws.fiji()
+        except RecapError as e:
             _fail(f"Invalid configuration:\n{e}")
-        session = FijiSession(loc.folder, Path(tempfile.mkdtemp(prefix="recap-fiji-")))
+    session = FijiSession(loc.folder if loc else None,
+                          ws.folder("fiji") / f"session_{dt.datetime.now():%Y%m%d_%H%M%S}")  # fmt: skip
     counter = FijiCounter(session, cfg.validation.count_infected, ask_import=lambda q: typer.confirm(q, default=True))
     try:
-        if ws is None:
-            result = run_pipeline(target, decide=_terminal_decide, counter=counter)
-        else:
-            images = list(image or [])
-            if out_of_date:
-                ws.scan()
-                stale = set(ws.out_of_date())
-                images = [p for p in (images or ws.images(cfg)) if file_sha256(p) in stale]
-                if not images:
-                    typer.echo("Every image is up to date.")
-                    return
-                typer.echo(f"{len(images)} image(s) not run yet or out of date.")
-            full = not images  # the spot check samples the whole workspace, as Run all in the app
-            result = run_workspace(ws, images or None, _terminal_decide, counter=counter,
-                                   spot_check=full and not no_spot_check)  # fmt: skip
+        images = list(image or [])
+        if out_of_date:
+            ws.scan()
+            stale = set(ws.out_of_date())
+            images = [p for p in (images or ws.images(cfg)) if file_sha256(p) in stale]
+            if not images:
+                typer.echo("Every image is up to date.")
+                return
+            typer.echo(f"{len(images)} image(s) not run yet or out of date.")
+        full = not images  # the spot check samples the whole workspace, as Run all in the app
+        result = run_workspace(ws, images or None, _terminal_decide, counter=counter,
+                               spot_check=full and not no_spot_check, settings_file=settings)  # fmt: skip
     except ConfigError as e:
         _fail(f"Invalid configuration:\n{e}")
     except Cancelled as e:
@@ -753,10 +812,11 @@ def settings_set(
     reason: Annotated[str | None, typer.Option(help="Required for an image: why it needs its own settings.")] = None,
     workspace: WorkspaceOpt = None,
 ) -> None:
-    """Set values for the workspace (written into recap.yaml), a batch or an image.
+    """Set values for the workspace, a batch or an image: all written into recap.yaml.
 
     Values are YAML: normalization.vrc_range=[5,30], filters.min_focus=0.6, filters.min_circularity=null.
-    Other values of that level stay. Guided mode in the app saves the same way.
+    Other values of that level stay. The workspace's go into recap.yaml's own sections, a batch's
+    under batches: NAME, an image's under images: PATH. The app's Settings tab saves the same way.
 
     \b
     Examples:

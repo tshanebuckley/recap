@@ -38,11 +38,30 @@ what it affects:
 
 | Save to | Affects | Terminal |
 |---|---|---|
-| workspace | every image (written into recap.yaml, keeping its comments) | `recap settings set filters.min_focus=0.6` |
+| workspace | every image | `recap settings set filters.min_focus=0.6` |
 | batch | every image in the batch | `recap settings set --batch "stain A" normalization.vrc_range="[3, 30]"` |
 | this image | only this image; needs a reason | `recap settings set --image IMG normalization.vrc_weight=1.3 --reason "weak ICP8"` |
 
-Only values that differ from the level above are stored. If a more specific level still sets
+Every level is written into the workspace's `recap.yaml`, keeping its comments: the
+workspace's values in its own sections, a batch's under `batches:`, an image's (with the reason,
+who saved it and when) under `images:` at the end of the file:
+
+```yaml
+batches:
+  stain A:
+    normalization:
+      vrc_range: [3, 30]
+images:
+  data/day79_04.tif:
+    reason: weak ICP8
+    by: ana
+    date: 2026-11-25
+    normalization:
+      vrc_weight: 1.3
+```
+
+So recap.yaml is the one place to read, compare or back up every setting; you may also edit it
+by hand (then More > **Rescan folder**). Only values that differ from the level above are stored. If a more specific level still sets
 the same value for this image, recap says so (that level keeps winning).
 
 **Done when:** the batch's images are marked *out of date* (with a **Run this image** banner on

@@ -154,8 +154,7 @@ class BatchRow(SQLModel, table=True):
     __tablename__ = "batches"
     __table_args__ = (UniqueConstraint("name", name="uq_batches_name"),)
     id: int | None = Field(default=None, primary_key=True)
-    name: str
-    note: str | None = None
+    name: str  # its settings and note: recap.yaml, batches: (recap 5.0)
     created_at: str | None = None
 
 
@@ -165,21 +164,6 @@ class ImageBatchRow(SQLModel, table=True):
     __tablename__ = "image_batches"
     sha256: str = Field(primary_key=True)
     batch_id: int = Field(foreign_key="batches.id")
-
-
-class LevelSettingsRow(SQLModel, table=True):
-    """Settings for one level: the workspace (target ""), a batch (its name) or an image (its sha256).
-    overrides is flat: {"filters.min_focus": 0.6, ...}. An image's settings need a reason."""
-
-    __tablename__ = "level_settings"
-    __table_args__ = (UniqueConstraint("level", "target", name="uq_level_settings_target"),)
-    id: int | None = Field(default=None, primary_key=True)
-    level: str  # workspace | batch | image
-    target: str
-    overrides: dict | None = Field(default=None, sa_column=Column(JSON))
-    reason: str | None = None
-    updated_by: str | None = None
-    updated_at: str | None = None
 
 
 # ---- versions and migrations -------------------------------------------------------------------

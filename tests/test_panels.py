@@ -203,7 +203,8 @@ def test_new_workspace_from_a_settings_file(app, synth_dir, monkeypatch):
     monkeypatch.setattr(QtWidgets.QMessageBox, "exec", press_copy)
     monkeypatch.setattr(QtWidgets.QFileDialog, "getOpenFileName", lambda *a, **k: (str(synth_dir / "old.yaml"), ""))
     new = dialogs.make_workspace(None, synth_dir)
-    assert new.has_settings and new.settings().input.images == [] and len(new.status()) == 6
+    assert new.has_settings and len(new.status()) == 6  # every image of the folder
+    assert "images" not in (synth_dir / "recap.yaml").read_text(encoding="utf-8")  # input.images is not copied
     assert new.settings().output.directory.as_posix() == "res"
 
 

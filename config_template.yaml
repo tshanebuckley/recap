@@ -1,12 +1,9 @@
 # recap (Reconstruction of Cellular Architecture and Phenotypes) configuration
 input:
-  images:                 # paths or globs, relative to this file
-    - data/*.tif
   dapi_channel: 0         # 0-based channel indices
   vrc_channel: 1          # ICP8 / ICP4 / click-labelled viral DNA
   neuron_channel: null    # e.g. 2 for MAP2 or bIII-tubulin; null to skip
   exclude_regions: []     # [y0, y1, x0, x1] boxes blanked before analysis (timestamps, scale bars)
-  use_workspace_settings: true  # images in a recap workspace: apply its workspace / batch / image settings
 
 normalization:
   dapi_percentiles: [1.0, 99.8]

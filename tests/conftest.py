@@ -61,7 +61,7 @@ def synth_dir(tmp_path):
 
 @pytest.fixture
 def write_config(synth_dir):
-    def _write(text: str, name: str = "config.yaml") -> Path:
+    def _write(text: str, name: str = "recap.yaml") -> Path:
         p = synth_dir / name
         p.write_text(text, encoding="utf-8")
         return p

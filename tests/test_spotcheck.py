@@ -36,8 +36,7 @@ def test_spot_check_save_then_reuse(write_config, synth_dir, monkeypatch):
     assert len(counts) == 3 and FakeFiji.started == 4  # one skipped, replaced from the pool
     assert comp.missed.dropna().sum() == 2  # the background click, in both point-counted images
     assert not list(out.glob("image_summary_*.csv"))  # "Save counts" stops before the batch
-    # re-running the final config reuses every count: Fiji is not started, the batch runs ("r")
+    # running the workspace again reuses every count (kept in it): Fiji is not started, the batch runs ("r")
     FakeFiji.started = 0
-    final = next(out.glob("final_config_*.yaml"))
-    assert run_cli("run", final, input="r\n").exit_code == 0
+    assert run_cli("run", synth_dir, input="r\n").exit_code == 0
     assert FakeFiji.started == 0 and len(summary(out)) == 6

@@ -33,9 +33,11 @@ from recap.errors import RecapError
 from recap.gui import common as C
 
 SAVE_HELP = {
-    "workspace": "Every image in the workspace (recap.yaml), unless its batch or the image sets its own value.",
-    "batch": "Every image in batch {batch}, unless the image sets its own value.",
-    "image": "Only this image. You will be asked why it needs its own settings.",
+    "workspace": "Every image in the workspace, unless its batch or the image sets its own value. "
+    "Written to recap.yaml.",
+    "batch": "Every image in batch {batch}, unless the image sets its own value. Written to recap.yaml, "
+    "under batches: {batch}.",
+    "image": "Only this image. You will be asked why it needs its own settings. Written to recap.yaml, under images:.",
 }
 
 

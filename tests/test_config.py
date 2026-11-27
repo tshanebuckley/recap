@@ -9,13 +9,15 @@ from recap import config
 
 
 # ----------------------------------------------------------------- configuration
-def test_template_round_trip(synth_dir):
-    cfg = synth_dir / "t.yaml"
+def test_template_round_trip(synth_dir, tmp_path_factory):
+    cfg = tmp_path_factory.mktemp("settings") / "t.yaml"
     run_cli("template", cfg)
-    text = cfg.read_text(encoding="utf-8").replace("data/*.tif", (synth_dir / "data" / "*.tif").as_posix())
-    cfg.write_text(text, encoding="utf-8")
-    res = run_cli("validate", cfg)
-    assert res.exit_code == 0 and "6 image(s) found" in res.output
+    res = run_cli("validate", cfg)  # a settings file on its own: checked, with how to start a workspace
+    assert res.exit_code == 0 and "recap init FOLDER --from" in res.output
+    assert run_cli("init", synth_dir, "--from", cfg).exit_code == 0
+    (synth_dir / ".recapignore").write_text("data/img6.tif\n", encoding="utf-8")
+    res = run_cli("validate", synth_dir)
+    assert res.exit_code == 0 and "5 image(s) found, 1 ignored" in res.output
 
 
 @pytest.mark.parametrize(
@@ -53,3 +55,12 @@ def test_yaml_error_hints_at_windows_backslashes(tmp_path):
     assert res.exit_code == 1 and "forward slashes" in res.output
     p.write_text("input:\n  images: ['C:\\Users\\pi\\data\\*.tif']\n", encoding="utf-8")
     assert load_config(p)[1].input.images == ["C:\\Users\\pi\\data\\*.tif"]
+
+
+def test_config_template_file_matches_recap_template():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    assert (root / "config_template.yaml").read_text(encoding="utf-8") == config.TEMPLATE, (
+        "config_template.yaml is out of date: pixi run recap template config_template.yaml --force"
+    )

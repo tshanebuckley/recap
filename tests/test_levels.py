@@ -45,19 +45,24 @@ def _summary(out):
 
 
 def test_run_applies_levels_and_marks_them(write_config, synth_dir):
-    plain_cfg = write_config("input: {images: [data/img1.tif, data/img2.tif, data/img3.tif]}\n"
-                             "normalization: {vrc_range: [150, 3000]}\noutput: {directory: plain}\n")  # fmt: skip
-    assert run_cli("run", plain_cfg).exit_code == 0  # a settings file on its own: no levels
-    plain = pd.read_csv(next((synth_dir / "plain").glob("image_summary_*.csv")))
-    assert set(plain.settings) == {"settings file"}
-    make_ws(synth_dir)
     d = synth_dir / "data"
+    write_config("input: {}\nnormalization: {vrc_range: [150, 3000]}\noutput: {directory: plain}\n")
+    assert run_cli("run", synth_dir, *[x for i in (1, 2, 3) for x in ("-i", d / f"img{i}.tif")]).exit_code == 0
+    plain = pd.read_csv(next((synth_dir / "plain").glob("image_summary_*.csv")))
+    assert set(plain.settings) == {"workspace"}  # no batch or image settings yet
+    make_ws(synth_dir)
     assert run_cli("batch", "assign", "stain A", d / "img1.tif", d / "img2.tif").exit_code == 0
     assert run_cli("settings", "set", "--batch", "stain A", "filters.min_area=100000", "-w", synth_dir).exit_code == 0
     res = run_cli("settings", "set", "--image", d / "img2.tif", "filters.min_area=null")
     assert res.exit_code == 1 and "reason" in res.output  # an image needs a reason
     res = run_cli("settings", "set", "--image", d / "img2.tif", "filters.min_area=null", "--reason", "weak DAPI")
     assert res.exit_code == 0
+    import yaml
+
+    doc = yaml.safe_load((synth_dir / "recap.yaml").read_text(encoding="utf-8"))  # every level is in recap.yaml
+    assert doc["batches"] == {"stain A": {"filters": {"min_area": 100000}}}
+    assert doc["images"]["data/img2.tif"]["reason"] == "weak DAPI"
+    assert doc["images"]["data/img2.tif"]["filters"] == {"min_area": None}
     out = run_cli("settings", "show", d / "img2.tif")
     assert "batch: stain A" in out.output and "weak DAPI" in out.output and "set by image" in out.output
     assert run_cli("run", synth_dir, "-i", d / "img1.tif", "-i", d / "img2.tif", "-i", d / "img3.tif").exit_code == 0
@@ -81,11 +86,11 @@ def test_run_applies_levels_and_marks_them(write_config, synth_dir):
     assert res.exit_code == 0 and "5 image(s) not run yet or out of date" in res.output
     assert {r["state"] for r in ws.status()} == {"up to date"}
     assert "Every image is up to date" in run_cli("run", synth_dir, "--out-of-date").output
-    # switched off in recap.yaml: no levels
-    from recap.settingsfile import set_values
-
-    set_values(synth_dir / "recap.yaml", {"input.use_workspace_settings": False})
-    assert run_cli("run", synth_dir, "-i", d / "img1.tif").exit_code == 0
+    # removing the batch's and the image's entries from recap.yaml: no levels any more
+    ws.set_level_settings("batch", "stain A", {})
+    ws.set_level_settings("image", rows["img2.tif"]["sha256"], {})
+    assert "batches" not in (synth_dir / "recap.yaml").read_text(encoding="utf-8")
+    assert run_cli("run", synth_dir, "-i", d / "img1.tif", "-i", d / "img2.tif").exit_code == 0
     latest = sorted((synth_dir / "out").glob("image_summary_*.csv"))[-1]
     assert set(pd.read_csv(latest).settings) == {"workspace"}
 

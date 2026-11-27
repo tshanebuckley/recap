@@ -20,9 +20,10 @@ button calls the same library function as the command beside it, on the same `re
 | Images: Open... / New... (folder without recap.yaml) | `recap init FOLDER [--from FILE]` | `workspace.init_workspace` |
 | Add images (files or a folder), then the batch | `recap add FILES/FOLDERS [--batch NAME / --no-batch]` | `Workspace.add_images` |
 | Images: table, filter, Rescan | `recap status` | `Workspace.scan`, `Workspace.status` |
+| Images: More > Ignore / Stop ignoring selected images; filter *ignored images* | `recap ignore PATH...`, `recap unignore PATH...`, `recap ignore` | `Workspace.ignore`, `unignore` (`.recapignore`) |
 | Images: Run selected / out-of-date / all, Run this image | `recap run [-i IMG] [--out-of-date]` | `runner.run_workspace` |
 | Images: Set batch..., More > Batches... | `recap batch assign / remove / rename / delete / list` | `Workspace.assign_batch`, `rename_batch`, `delete_batch` |
-| Settings: Save to workspace / batch / this image | `recap settings set [--batch / --image --reason]` | `Workspace.save_effective`, `update_level` |
+| Settings: Save to workspace / batch / this image (all into recap.yaml) | `recap settings set [--batch / --image --reason]` | `Workspace.save_effective`, `update_level` |
 | Settings: Clear this image's own settings | `recap settings clear --image IMG` | `Workspace.set_level_settings` |
 | Settings: values and where they come from | `recap settings show IMG` | `Workspace.resolve` |
 | Count: Count this image in Fiji instead | `recap count IMG` | `counting.count_in_fiji` |

@@ -1,11 +1,24 @@
 """Settings in levels: workspace → staining batch → image.
 
-The workspace level is the workspace's settings file, recap.yaml. Batches and images hold only
-the settings they change ("overrides", stored in recap.db) as a flat dict such as
-{"filters.min_focus": 0.6, "normalization.vrc_range": [5, 30]}. An image's effective settings
-are recap.yaml with its batch's, then its own overrides applied; the most specific level wins.
+All three live in the workspace's recap.yaml. Its sections (input:, filters:, ...) are the
+workspace level, the defaults for every image. Two more sections hold the levels below it, each
+with only the values it changes:
 
-- workspace: recap.yaml, the defaults for every image in the workspace folder.
+    batches:
+      stain 2026-10-03:              # a staining batch (which images are in it: recap.db)
+        note: infected control slide 4
+        normalization: {vrc_range: [3, 22]}
+    images:
+      data/day79_07.tif:             # one image, by its path in the workspace
+        reason: weak DAPI, valid image
+        by: ana
+        date: 2026-11-25
+        normalization: {vrc_weight: 1.4}
+
+In code a level's values are flat ({"filters.min_focus": 0.6}); nest() and flatten() convert.
+An image's effective settings are the workspace's with its batch's, then its own values applied;
+the most specific level wins.
+
 - batch: images stained together share settings (assign with `recap batch assign` or the app).
 - image: corrections for a valid image whose staining is weaker or uneven. Needs a reason, and is
   marked in every output (image_summary: settings, overridden), so it is never hidden.
@@ -58,7 +71,7 @@ def check_overrides(overrides: dict[str, Any]) -> dict[str, Any]:
             f"These settings cannot be set per workspace, batch or image: {', '.join(bad)}. Allowed: "
             f"{', '.join(SECTIONS)} sections and input.exclude_regions (not the model)."
         )
-    d = {"input": {"images": ["x"]}}
+    d: dict[str, Any] = {"input": {}}
     for k, v in overrides.items():
         set_path(d, k, v)
     try:
@@ -66,6 +79,30 @@ def check_overrides(overrides: dict[str, Any]) -> dict[str, Any]:
     except ValueError as e:
         raise ConfigError(f"Invalid setting value:\n{e}") from e
     return overrides
+
+
+BATCH_INFO = ("note",)  # what a batch's entry holds besides settings
+IMAGE_INFO = ("reason", "by", "date")  # what an image's entry holds besides settings
+
+
+def flatten(entry: dict[str, Any] | None) -> dict[str, Any]:
+    """A level's entry in recap.yaml as flat values: {"filters": {"min_focus": 0.6}} -> {"filters.min_focus": 0.6}.
+    Its note, reason, by and date are left out."""
+    out: dict[str, Any] = {}
+    for section, values in (entry or {}).items():
+        if isinstance(values, dict):
+            for name, v in values.items():
+                out[f"{section}.{name}"] = list(v) if isinstance(v, tuple) else v
+    return out
+
+
+def nest(values: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Flat values as recap.yaml sections, in the order of the settings file."""
+    out: dict[str, dict[str, Any]] = {}
+    order = ("input", *SECTIONS)
+    for k in sorted(values, key=lambda k: (order.index(k.split(".")[0]) if k.split(".")[0] in order else 99, k)):
+        set_path(out, k, values[k])
+    return out
 
 
 @dataclass

@@ -1,9 +1,10 @@
 """A workspace: a folder of images with one settings file and one database.
 
     my-experiment/
-        recap.yaml                 THE settings of this workspace (every image; batches and single
-                                   images may change some values, stored in recap.db)
-        *.tif                      the images (anywhere below the folder)
+        recap.yaml                 THE settings of this workspace: every image, then under batches:
+                                   and images: what a staining batch or a single image changes
+        .recapignore               images to leave out (optional; see recap.ignore)
+        *.tif                      the images (anywhere below the folder, except those ignored)
         results/...                outputs of `recap run` (output.directory in recap.yaml)
         recap-data/
             recap.db               SQLite index (recap/db.py): images, runs, counts, masks, models, tuning
@@ -40,7 +41,6 @@ from recap.db import (
     CountRow,
     ImageBatchRow,
     ImageRow,
-    LevelSettingsRow,
     MaskRow,
     ModelRow,
     ResultRow,
@@ -49,6 +49,7 @@ from recap.db import (
     open_database,
 )
 from recap.errors import RecapError
+from recap.ignore import IgnoreList
 from recap.io import file_sha256
 
 log = logging.getLogger(__name__)
@@ -187,15 +188,20 @@ def init_workspace(folder: Path, settings_from: Path | None = None, force: bool 
         target.write_text(text, encoding="utf-8")
         from recap.settingsfile import set_values
 
-        fixes: dict[str, Any] = {"input.images": []}  # a relative output folder now lives in the workspace
+        fixes: dict[str, Any] = {}  # paths relative to the settings file become relative to the workspace
         if cfg.validation.fiji and not Path(cfg.validation.fiji).is_absolute():
             fixes["validation.fiji"] = _relative_to(settings_from.parent / cfg.validation.fiji, folder)
         prev = cfg.validation.previous_counts
         if prev is not None and not prev.is_absolute():
             fixes["validation.previous_counts"] = _relative_to(settings_from.parent / prev, folder)
-        set_values(target, fixes)
-        if cfg.input.images:
-            log.info("input.images of %s replaced by [] (every image in the workspace)", settings_from.name)
+        if fixes:
+            set_values(target, fixes)
+        from recap.settingsfile import remove_keys
+
+        gone = remove_keys(target, ["input.images", "input.use_workspace_settings"], sections=("images",))
+        if gone:
+            log.info("Not copied from %s: %s (a workspace is every image in its folder; images: "
+                     "are another workspace's single-image settings)", settings_from.name, ", ".join(gone))  # fmt: skip
     elif not target.exists() or force:
         target.write_text(workspace_template(), encoding="utf-8")
     ws = Workspace(folder)
@@ -223,9 +229,12 @@ class Workspace:
         self.data.mkdir(exist_ok=True)
         self.db_path = self.data / DB_NAME
         self.settings_path = self.root / SETTINGS_NAME
+        self.ignore_list = IgnoreList(self.root)
+        self._doc_cache: tuple[tuple[int, int], dict] | None = None
+        self._fold_database_levels()  # (before the upgrade drops the table that held them)
         # backs up and upgrades a database from an older recap; self.upgrade says what was done (or None)
         self.engine, self.upgrade = open_database(self.db_path, __version__)
-        self._fold_workspace_level()
+        self._fold_input_images()
 
     # ---- the settings file -------------------------------------------------------------------------
     @property
@@ -251,15 +260,8 @@ class Workspace:
         return d if d.is_absolute() else self.root / d
 
     def images(self, cfg=None) -> list[Path]:
-        """The workspace's images: every image in the folder, or those matching input.images."""
-        cfg = cfg or self.settings()
-        files = self.image_files()
-        if not cfg.input.images:
-            return files
-        import fnmatch
-
-        pats = [Path(p).as_posix() for p in cfg.input.images]
-        return [p for p in files if any(fnmatch.fnmatch(self.rel(p), q) or fnmatch.fnmatch(str(p), q) for q in pats)]
+        """The workspace's images: every image in the folder except those in .recapignore."""
+        return self.image_files()
 
     def fiji(self):
         """Where Fiji is, from recap.yaml (validation.fiji, relative to the workspace) or the usual places."""
@@ -271,21 +273,84 @@ class Workspace:
         except ValueError as e:
             raise RecapError(str(e)) from e
 
-    def _fold_workspace_level(self) -> None:
-        """recap 4.2 kept workspace-wide overrides in the database; they belong in recap.yaml."""
+    def _fold_database_levels(self) -> None:
+        """recap 4.2 to 4.4 kept batch and image settings (and 4.2 workspace settings) in the database;
+        recap 5.0 keeps them in recap.yaml. Copied here before the database upgrade removes them."""
+        import json
+        import sqlite3
+
+        if not self.db_path.is_file():
+            return
+        con = sqlite3.connect(self.db_path)
+        try:
+            tables = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            if "level_settings" not in tables:
+                return
+            rows = con.execute("SELECT level, target, overrides, reason, updated_by, updated_at FROM level_settings")
+            rows = [(lv, t, json.loads(o) if o else {}, r, by, at) for lv, t, o, r, by, at in rows]
+            cols = [c[1] for c in con.execute("PRAGMA table_info(batches)")]
+            notes = dict(con.execute("SELECT name, note FROM batches WHERE note IS NOT NULL")) if "note" in cols else {}
+            paths = dict(con.execute("SELECT sha256, path FROM images")) if "images" in tables else {}
+        finally:
+            con.close()
+        if not rows and not notes:
+            return
+        from recap.levels import nest
+        from recap.settingsfile import set_entry, set_values
+
+        if not self.has_settings:  # nowhere to put them: keep a copy next to the database
+            dump = {"batches": {}, "images": {}}
+            for lv, t, o, r, _by, _at in rows:
+                key = "batches" if lv == "batch" else "images" if lv == "image" else "workspace"
+                dump.setdefault(key, {})[paths.get(t, t) if lv == "image" else t] = {"reason": r, **nest(o)}
+            out = self.data / "settings_from_database.yaml"
+            out.write_text(yaml.safe_dump(dump, sort_keys=False), encoding="utf-8")
+            log.warning("This workspace has no recap.yaml: its batch and image settings were saved to %s", out)
+            return
+        for lv, t, o, r, by, at in rows:
+            if lv == "workspace" and o:
+                set_values(self.settings_path, o)
+            elif lv == "batch":
+                set_entry(self.settings_path, "batches", t, {"note": notes.pop(t, None)}, nest(o))
+            elif lv == "image":
+                info = {"reason": r, "by": by, "date": (at or "")[:10] or None}
+                set_entry(self.settings_path, "images", paths.get(t, t), info, nest(o))
+        for name, note in notes.items():  # batches with a note and no settings
+            set_entry(self.settings_path, "batches", name, {"note": note}, {})
+        log.warning("Batch and image settings moved from the database into %s (recap 5.0).", self.settings_path.name)
+
+    def _fold_input_images(self) -> None:
+        """recap 5.0 removed input.images: a workspace is every image in its folder. An old list of
+        images becomes .recapignore lines for the other images, so the workspace keeps the same images."""
         if not self.has_settings:
             return
-        old = self.level_settings("workspace")
-        if not old:
-            return
-        from recap.settingsfile import set_values
+        from recap.settingsfile import read, remove_keys
 
-        set_values(self.settings_path, old)
-        with self.session() as s:
-            for row in s.exec(select(LevelSettingsRow).where(LevelSettingsRow.level == "workspace")):
-                s.delete(row)
-            s.commit()
-        log.warning("Workspace settings from the database moved into %s: %s", self.settings_path.name, old)
+        try:
+            raw = read(self.settings_path)
+        except (OSError, yaml.YAMLError):
+            return
+        inp = raw.get("input") if isinstance(raw, dict) else None
+        if not isinstance(inp, dict) or not ({"images", "use_workspace_settings"} & set(inp)):
+            return
+        patterns = [Path(p).as_posix() for p in inp.get("images") or []]
+        if patterns:
+            import fnmatch
+
+            files = self.image_files()
+
+            def listed(p: Path) -> bool:
+                return any(fnmatch.fnmatch(self.rel(p), q) or fnmatch.fnmatch(p.as_posix(), q) for q in patterns)
+
+            keep = [p for p in files if listed(p)]
+            if keep:  # (a list matching nothing here leaves every image in)
+                left_out = self.ignore([p for p in files if p not in keep])
+                log.warning("input.images is gone (recap 5.0): %d other image(s) of the folder are now in "
+                            ".recapignore", len(left_out))  # fmt: skip
+        try:
+            remove_keys(self.settings_path, ["input.images", "input.use_workspace_settings"])
+        except (ValueError, OSError) as e:  # an invalid recap.yaml: say so where it is used
+            log.warning("could not update %s: %s", self.settings_path.name, e)
 
     @classmethod
     def from_db(cls, db_path: Path) -> Workspace:
@@ -314,7 +379,9 @@ class Workspace:
         return d
 
     # ---- scanning ------------------------------------------------------------------------------
-    def image_files(self) -> list[Path]:
+    def image_files(self, include_ignored: bool = False) -> list[Path]:
+        """Every image below the folder (recap's own outputs left out), without the ignored ones
+        unless include_ignored."""
         out = []
         for p in sorted(self.root.rglob("*")):
             if p.suffix.lower() not in IMAGE_SUFFIXES or DATA_DIR in p.relative_to(self.root).parts:
@@ -322,14 +389,50 @@ class Workspace:
             if p.stem.endswith(DERIVED_SUFFIXES) or "_edited_" in p.stem:
                 continue
             out.append(p)
+        if include_ignored:
+            return out
+        keep = set(self.ignore_list.filter([self.rel(p) for p in out]))
+        return [p for p in out if self.rel(p) in keep]
+
+    # ---- ignored images ------------------------------------------------------------------------
+    def is_ignored(self, path: Path | str) -> bool:
+        return self.ignore_list.is_ignored(self.rel(path))
+
+    def ignored_shas(self) -> set[str]:
+        """The indexed images that .recapignore leaves out."""
+        rules = self.ignore_list.rules()
+        if not rules:
+            return set()
+        with self.session() as s:
+            rows = s.exec(select(ImageRow.sha256, ImageRow.path)).all()
+        return {sha for sha, path in rows if path and self.ignore_list.is_ignored(path, rules)}
+
+    def _ignore_targets(self, paths: list[Path | str]) -> list[str]:
+        out = []
+        for p in paths:
+            p = Path(p) if Path(p).is_absolute() else (Path.cwd() / p)
+            rel = self.rel(p)
+            if Path(rel).is_absolute():
+                raise RecapError(f"{p} is not inside the workspace {self.root}")
+            out.append(rel + "/" if p.is_dir() else rel)
         return out
+
+    def ignore(self, paths: list[Path | str]) -> list[str]:
+        """Leave images (or whole folders) out of the workspace: they are written to .recapignore.
+        What recap knows about them is kept. Returns the paths newly ignored."""
+        return self.ignore_list.ignore(self._ignore_targets(paths))
+
+    def unignore(self, paths: list[Path | str]) -> list[str]:
+        """Bring ignored images (or folders) back. Returns the paths brought back."""
+        return self.ignore_list.unignore(self._ignore_targets(paths))
 
     def scan(self) -> dict[str, int]:
         """Index images, run outputs and manual_counts CSVs below the folder. Unchanged files are skipped."""
         n_img = n_runs = n_counts = 0
         with self.session() as s:
             known = {r.path: r for r in s.exec(select(ImageRow))}
-            for p in self.image_files():
+            moved: list[tuple[str, str]] = []
+            for p in self.image_files(include_ignored=True):  # (indexed, so the app can bring them back)
                 st = p.stat()
                 k = known.get(self.rel(p))
                 if k and k.size_bytes == st.st_size and k.mtime == st.st_mtime:
@@ -339,10 +442,24 @@ class Workspace:
                 except Exception as e:  # noqa: BLE001  (not a readable image: skip it)
                     log.warning("skipped %s: %s", p, e)
                     continue
-                s.merge(ImageRow(sha256=file_sha256(p), path=self.rel(p), name=p.name, size_bytes=st.st_size,
+                sha = file_sha256(p)
+                before = s.get(ImageRow, sha)
+                if (
+                    before is not None
+                    and before.path
+                    and before.path != self.rel(p)
+                    and not self.abs(before.path).is_file()
+                ):
+                    moved.append((before.path, self.rel(p)))  # a moved or renamed image keeps its own settings
+                s.merge(ImageRow(sha256=sha, path=self.rel(p), name=p.name, size_bytes=st.st_size,
                                  mtime=st.st_mtime, seen_at=now(), **meta))  # fmt: skip
                 n_img += 1
             s.commit()
+        if moved and self.has_settings:
+            from recap.settingsfile import rename_entry
+
+            for old, new in moved:
+                rename_entry(self.settings_path, "images", old, new)
         logs = set(self.root.rglob("run_log_*.yaml"))
         try:
             out = self.output_dir()
@@ -385,6 +502,8 @@ class Workspace:
             log.warning("skipped %s: %s", log_file, e)
             return 0
         run, seg = rl.get("run", {}), (rl.get("final_config") or {}).get("segmentation", {})
+        if run.get("comparison"):
+            return 0  # a comparison run (recap run --settings): not the images' results
         model = seg.get("stardist_model") if seg.get("method") == "stardist" else seg.get("cellpose_model")
         rows = []
         for d in rl.get("images") or []:
@@ -430,13 +549,16 @@ class Workspace:
                 counts.setdefault(c.sha256, []).append(c)
             masks = dict(s.exec(select(MaskRow.sha256, func.count()).group_by(MaskRow.sha256)).all())
             batches = self.image_batches()
-            own = {r.target for r in s.exec(select(LevelSettingsRow).where(LevelSettingsRow.level == "image"))}
-        current = self.current_hashes([im.sha256 for im in images])
+        own = set(self._levels().get("images") or {})
+        ignored = self.ignored_shas()
+        current = self.current_hashes([im.sha256 for im in images if im.sha256 not in ignored])
         rows = []
         for im in images:
             res, run = latest.get(im.sha256, (None, None))
             cs = counts.get(im.sha256, [])
-            if res is None:
+            if im.sha256 in ignored:
+                state = "ignored"  # in .recapignore: not run, counted, tuned or trained on
+            elif res is None:
                 state = "not run"
             elif current.get(im.sha256) is None:
                 state = "unknown"  # no valid recap.yaml to compare with
@@ -460,8 +582,8 @@ class Workspace:
                     "manual_nuclei": cs[-1].nuclei if cs else None,
                     "edited_masks": masks.get(im.sha256, 0),
                     "batch": batches.get(im.sha256),
-                    "own_settings": im.sha256 in own,
-                    "state": state,  # up to date | out of date (settings changed since the run) | not run | unknown
+                    "own_settings": im.path in own,
+                    "state": state,  # up to date | out of date (settings changed since) | not run | unknown | ignored
                 }
             )
         return rows
@@ -543,7 +665,8 @@ class Workspace:
         """Latest edited mask per image: the ground truth for tuning, training and comparing models."""
         with self.session() as s:
             rows = s.exec(select(MaskRow).order_by(MaskRow.id)).all()
-        return {r.sha256: self.abs(r.path) for r in rows}
+        ignored = self.ignored_shas()
+        return {r.sha256: self.abs(r.path) for r in rows if r.sha256 not in ignored}
 
     def latest_masks(self, sha: str) -> tuple[Path | None, Path | None, Path | None]:
         """(edited mask, program mask, program excluded mask) for an image; None where missing."""
@@ -600,12 +723,39 @@ class Workspace:
             return [r.model_dump() for r in s.exec(q)]
 
     # ---- staining batches and settings per level -------------------------------------------------
+    def _levels(self) -> dict[str, Any]:
+        """recap.yaml's batches: and images: sections (re-read only when the file changes)."""
+        if not self.has_settings:
+            return {}
+        st = self.settings_path.stat()
+        key = (st.st_mtime_ns, st.st_size)
+        if self._doc_cache is None or self._doc_cache[0] != key:
+            from recap.settingsfile import read
+
+            try:
+                doc = read(self.settings_path)
+            except (OSError, yaml.YAMLError):
+                doc = {}
+            levels = {k: doc.get(k) or {} for k in ("batches", "images")} if isinstance(doc, dict) else {}
+            self._doc_cache = (key, levels)
+        return self._doc_cache[1]
+
+    def _image_key(self, sha: str) -> str:
+        """An image's name in recap.yaml's images: section (its path in the workspace)."""
+        with self.session() as s:
+            row = s.get(ImageRow, sha)
+        if row is None or not row.path:
+            raise RecapError(f"image {sha[:12]} is not in this workspace (scan it first)")
+        return row.path
+
     def batches(self) -> list[dict[str, Any]]:
-        """Batches with their number of images."""
+        """Batches with their number of images and note."""
         with self.session() as s:
             rows = s.exec(select(BatchRow).order_by(BatchRow.name)).all()
             n = dict(s.exec(select(ImageBatchRow.batch_id, func.count()).group_by(ImageBatchRow.batch_id)).all())
-        return [{**b.model_dump(), "n_images": n.get(b.id, 0)} for b in rows]
+        entries = self._levels().get("batches") or {}
+        return [{**b.model_dump(), "n_images": n.get(b.id, 0), "note": (entries.get(b.name) or {}).get("note")}
+                for b in rows]  # fmt: skip
 
     def image_batches(self) -> dict[str, str]:
         """sha256 -> batch name."""
@@ -614,7 +764,9 @@ class Workspace:
             return dict(s.exec(q).all())
 
     def assign_batch(self, shas: list[str], name: str | None, note: str | None = None) -> None:
-        """Put images in a batch (created if new); name None takes them out of any batch."""
+        """Put images in a batch (created if new; a note goes into recap.yaml); name None takes them
+        out of any batch."""
+        created = False
         with self.session() as s:
             for sha in shas:
                 old = s.get(ImageBatchRow, sha)
@@ -624,12 +776,26 @@ class Workspace:
             if name:
                 batch = s.exec(select(BatchRow).where(BatchRow.name == name)).first()
                 if batch is None:
-                    batch = BatchRow(name=name, note=note, created_at=now())
+                    batch = BatchRow(name=name, created_at=now())
                     s.add(batch)
                     s.flush()
+                    created = True
                 for sha in shas:
                     s.add(ImageBatchRow(sha256=sha, batch_id=batch.id))
             s.commit()
+        if name and note and self.has_settings and (created or not self.batch_note(name)):
+            self._write_batch(name, note=note)
+
+    def batch_note(self, name: str) -> str | None:
+        return ((self._levels().get("batches") or {}).get(name) or {}).get("note")
+
+    def _write_batch(self, name: str, values: dict[str, Any] | None = None, note: str | None = None) -> None:
+        from recap.levels import nest
+        from recap.settingsfile import set_entry
+
+        self.settings()  # a clear message if there is no recap.yaml
+        values = self.level_settings("batch", name) if values is None else values
+        set_entry(self.settings_path, "batches", name, {"note": note or self.batch_note(name)}, nest(values))
 
     def rename_batch(self, old: str, new: str) -> None:
         with self.session() as s:
@@ -638,66 +804,69 @@ class Workspace:
             b = s.exec(select(BatchRow).where(BatchRow.name == old)).one()
             b.name = new
             s.add(b)
-            for row in s.exec(select(LevelSettingsRow).where(LevelSettingsRow.level == "batch",
-                                                             LevelSettingsRow.target == old)):  # fmt: skip
-                row.target = new
-                s.add(row)
             s.commit()
+        if self.has_settings:
+            from recap.settingsfile import rename_entry
+
+            rename_entry(self.settings_path, "batches", old, new)
 
     def delete_batch(self, name: str) -> None:
         """Remove a batch and its settings; its images stay, in no batch."""
         with self.session() as s:
             b = s.exec(select(BatchRow).where(BatchRow.name == name)).first()
-            if b is None:
-                return
-            for row in s.exec(select(ImageBatchRow).where(ImageBatchRow.batch_id == b.id)):
-                s.delete(row)
-            for row in s.exec(select(LevelSettingsRow).where(LevelSettingsRow.level == "batch",
-                                                             LevelSettingsRow.target == name)):  # fmt: skip
-                s.delete(row)
-            s.delete(b)
-            s.commit()
+            if b is not None:
+                for row in s.exec(select(ImageBatchRow).where(ImageBatchRow.batch_id == b.id)):
+                    s.delete(row)
+                s.delete(b)
+                s.commit()
+        if self.has_settings and name in (self._levels().get("batches") or {}):
+            from recap.settingsfile import set_entry
+
+            set_entry(self.settings_path, "batches", name, {}, {})
 
     def level_settings(self, level: str, target: str = "") -> dict[str, Any]:
-        """The overrides stored for a batch or an image ({} if none)."""
-        with self.session() as s:
-            row = s.exec(
-                select(LevelSettingsRow).where(LevelSettingsRow.level == level, LevelSettingsRow.target == target)
-            ).first()
-        return dict(row.overrides or {}) if row else {}
+        """The values a batch (target: its name) or an image (target: its sha256) changes ({} if none)."""
+        from recap.levels import flatten
+
+        if level == "batch":
+            return flatten((self._levels().get("batches") or {}).get(target))
+        if level == "image":
+            try:
+                key = self._image_key(target)
+            except RecapError:
+                return {}
+            return flatten((self._levels().get("images") or {}).get(key))
+        return {}
 
     def level_reason(self, sha: str) -> str | None:
-        with self.session() as s:
-            row = s.exec(
-                select(LevelSettingsRow).where(LevelSettingsRow.level == "image", LevelSettingsRow.target == sha)
-            ).first()
-        return row.reason if row else None
+        try:
+            key = self._image_key(sha)
+        except RecapError:
+            return None
+        return ((self._levels().get("images") or {}).get(key) or {}).get("reason")
 
     def set_level_settings(
         self, level: str, target: str, overrides: dict[str, Any], reason: str | None = None, by: str | None = None
     ) -> None:
-        """Replace a batch's or an image's overrides ({} removes them). An image needs a reason.
-        The workspace level is recap.yaml: see update_level."""
-        from recap.levels import check_overrides
+        """Replace a batch's or an image's values in recap.yaml ({} removes them). An image needs a
+        reason. The workspace's own values: see update_level."""
+        from recap.levels import check_overrides, nest
+        from recap.settingsfile import set_entry
 
         if level not in ("batch", "image"):
-            raise RecapError("set_level_settings stores batch and image settings; the workspace's are in recap.yaml")
+            raise RecapError("set_level_settings stores batch and image settings; for the workspace use update_level")
         if level == "image" and overrides and not (reason or self.level_reason(target) or "").strip():
             raise RecapError("Settings for a single image need a reason (e.g. 'weak DAPI staining').")
         check_overrides(overrides)
-        with self.session() as s:
-            row = s.exec(
-                select(LevelSettingsRow).where(LevelSettingsRow.level == level, LevelSettingsRow.target == target)
-            ).first()
-            if not overrides:
-                if row is not None:
-                    s.delete(row)
-            else:
-                row = row or LevelSettingsRow(level=level, target=target)
-                row.overrides, row.reason = dict(overrides), reason or row.reason
-                row.updated_by, row.updated_at = by or default_counter_name(), now()
-                s.add(row)
-            s.commit()
+        if level == "batch":
+            self._write_batch(target, dict(overrides))
+            return
+        self.settings()
+        info = {}
+        if overrides:
+            info = {"reason": reason or self.level_reason(target), "by": by or default_counter_name(),
+                    "date": dt.date.today().isoformat()}  # fmt: skip
+        set_entry(self.settings_path, "images", self._image_key(target), info, nest(overrides))
 
     def update_level(
         self,
@@ -708,8 +877,9 @@ class Workspace:
         reason: str | None = None,
         by: str | None = None,
     ) -> dict[str, Any]:
-        """Set some values at a level and remove others (the rest of that level is kept).
-        workspace: written into recap.yaml (its comments kept); batch / image: recap.db.
+        """Set some values at a level and remove others (the rest of that level is kept). Every
+        level is written into recap.yaml, its comments kept: the workspace's own sections, or the
+        batch's / image's entry under batches: / images:.
         Returns what the level now holds (for the workspace: the values written)."""
         from recap.levels import check_overrides
 
@@ -766,8 +936,6 @@ class Workspace:
         from recap.levels import resolve
 
         base = base or self.settings()
-        if not base.input.use_workspace_settings:
-            return resolve(base, [])
         batch = self.image_batches().get(sha)
         levels = []
         if batch:

@@ -25,10 +25,8 @@ from types import SimpleNamespace
 import numpy as np
 import pandas as pd
 import tifffile
-import yaml
 
-from recap.compare import latest, match
-from recap.config import PipelineConfig
+from recap.compare import latest, match, run_images
 from recap.counts import ManualCount, compare_counts, read_manual_counts
 from recap.errors import RecapError
 from recap.io import file_sha256
@@ -65,12 +63,9 @@ class ReportResult:
 
 
 def load_run(folder: Path, name: str) -> RunData:
-    cfg = PipelineConfig.model_validate(
-        yaml.safe_load(latest(folder, "final_config_*.yaml").read_text(encoding="utf-8"))
-    )
     summary = pd.read_csv(latest(folder, "image_summary_*.csv"))
     images, stems = {}, {}
-    for p in map(Path, cfg.input.images):
+    for p in run_images(folder):
         if not p.exists():
             log.warning("%s: image %s not found; it cannot be matched to manual counts", name, p)
             continue

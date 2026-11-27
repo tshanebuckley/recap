@@ -1,8 +1,8 @@
 # The example workspace's settings (recap.yaml): every image in this folder.
 # Put Experiment_Hippoc_org_day_79_Acute_VimentinR_ICP8_G.tif here (8-bit RGB export,
 # 1392 x 1040 px, 0.203 um/px). Result: 472 nuclei, 248 VRC+ (manual count 472).
+# Batch and single-image settings, once saved, are added at the end (batches:, images:).
 input:
-  images: []               # [] = every image in this folder
   dapi_channel: 2          # blue
   vrc_channel: 1           # green = ICP8
   neuron_channel: 0        # red = vimentin (glial/progenitor marker, NOT neuronal; stored as neuron_ring_mean)

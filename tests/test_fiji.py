@@ -123,7 +123,6 @@ def test_old_interactive_section_still_loads(write_config, synth_dir, fake_fiji)
     cfg = write_config(
         BASE + f"interactive: {{enabled: true, fiji: {app.as_posix()}, java_memory: 4g, tune_on: 0}}\n"
         "output: {directory: old}\n",
-        "old.yaml",
     )
     res = run_cli("validate", cfg)
     assert res.exit_code == 0 and "removed in recap 4.0" in res.output

@@ -7,8 +7,9 @@
     from recap.workspace import open_workspace
     result = run_workspace(open_workspace(Path("my-experiment")), progress=lambda i, n, path, info: ...)
 
-run_pipeline runs a settings file that is not a workspace's (no batch or image settings, and
-nothing is stored in a workspace until one is scanned).
+run_pipeline(path) does the same for a workspace given as its folder or recap.yaml. Every run
+happens in a workspace (recap 5.0): a settings file of its own is a starting point for one
+(`recap init FOLDER --from FILE`).
 """
 
 from __future__ import annotations
@@ -60,16 +61,6 @@ class RunResult:
     config: PipelineConfig | None = None  # the settings actually applied
 
 
-def load_and_check(config_path: Path) -> tuple[dict, PipelineConfig, str, list[Path]]:
-    """Load and validate a config, resolve its image paths and (if needed) its Fiji. Raises ConfigError."""
-    try:
-        raw, cfg, sha = load_config(config_path)
-        paths = cfg.input.resolve_paths(config_path.parent)
-    except (ValidationError, FileNotFoundError) as e:
-        raise ConfigError(str(e)) from e
-    return raw, cfg, sha, paths
-
-
 def new_stamp(out_dir: Path) -> str:
     """Date and time of a run; a suffix if a run in the same second already used it."""
     base = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -81,37 +72,35 @@ def new_stamp(out_dir: Path) -> str:
 
 
 def run_pipeline(
-    config_path: Path,
+    path: Path,
     decide: DecideFn | None = None,
     progress: ProgressFn | None = None,
     cancel: Callable[[], bool] | None = None,
     counter: CountFn | None = None,
+    images: list[Path] | None = None,
 ) -> RunResult:
-    """Run a settings file end to end and write all outputs into its output directory. A
-    workspace's recap.yaml runs as that workspace (run_workspace).
+    """Run a workspace (its folder or its recap.yaml) end to end: run_workspace. A settings file
+    that is not a workspace's recap.yaml is refused with how to make a workspace from it.
 
     counter counts the spot-check images that have no previous count (validation.enabled), e.g.
     recap.fijicount.FijiCounter; decide takes the decision after the spot-check overview."""
+    from recap.errors import RecapError
     from recap.workspace import SETTINGS_NAME, Workspace, workspace_root
 
-    config_path = Path(config_path)
-    if config_path.name == SETTINGS_NAME and (config_path.parent / "recap-data").is_dir():
-        return run_workspace(Workspace(config_path.parent), None, decide, progress, cancel, counter)
-    raw, cfg, sha, paths = load_and_check(config_path)
-    root = workspace_root(paths[0]) if paths else None
-    if root is not None:
-        log.warning(
-            "These images are in the workspace %s, but this settings file is not its recap.yaml: its batch "
-            "and image settings are not used. To use them: recap run %s", root, root,
-        )  # fmt: skip
-    out_dir = cfg.output.directory if cfg.output.directory.is_absolute() else config_path.parent / cfg.output.directory
-    stamp = new_stamp(out_dir)
-    log_file = setup_logging(out_dir, stamp)
+    path = Path(path)
+    if path.is_file() and path.name != SETTINGS_NAME:
+        raise ConfigError(
+            f"{path.name} is a settings file, not a workspace. Every run happens in a workspace: "
+            f"recap init FOLDER --from {path} makes the folder of your images one, then recap run FOLDER."
+        )
+    root = workspace_root(path)
+    if root is None:
+        raise ConfigError(f"{path} is not a workspace: recap init {path} --from <settings file>")
     try:
-        return _run(config_path, raw, cfg, sha, paths, stamp, out_dir, log_file, decide, progress, cancel, counter,
-                    None)  # fmt: skip
-    finally:
-        close_logging()  # release run_<stamp>.log (Windows cannot move or delete an open file)
+        ws = Workspace(root)
+    except RecapError as e:
+        raise ConfigError(str(e)) from e
+    return run_workspace(ws, images, decide, progress, cancel, counter)
 
 
 def run_workspace(
@@ -122,25 +111,38 @@ def run_workspace(
     cancel: Callable[[], bool] | None = None,
     counter: CountFn | None = None,
     spot_check: bool = True,
+    settings_file: Path | None = None,
 ) -> RunResult:
     """Run a workspace (all its images, or `images`) with each image's own settings (recap.yaml →
     batch → image); the results are recorded in the workspace. The spot check (validation.enabled)
-    reuses counts already in the workspace and counts more up to sample_size."""
+    reuses counts already in the workspace and counts more up to sample_size.
+
+    settings_file: a comparison run (e.g. another segmentation method). That file's settings take
+    the place of recap.yaml's own sections (the batch and image settings still apply), the outputs
+    go to its output.directory (relative to the workspace), there is no spot check, and the run is
+    not recorded as the images' results: compare it with `recap report RUN_A RUN_B -m recap.db`."""
+    config_path = Path(settings_file) if settings_file else ws.settings_path
     try:
-        raw, cfg, sha = load_config(ws.settings_path)
+        raw, cfg, sha = load_config(config_path)
     except (ValidationError, OSError) as e:
-        raise ConfigError(f"{ws.settings_path}: {e}") from e
+        raise ConfigError(f"{config_path}: {e}") from e
     except Exception as e:  # noqa: BLE001  (RecapError: no recap.yaml)
         raise ConfigError(str(e)) from e
     ws.scan()
     paths = [Path(p) for p in images] if images else ws.images(cfg)
+    ignored = [p for p in paths if ws.is_ignored(p)]
+    if ignored:
+        raise ConfigError(
+            f"{', '.join(p.name for p in ignored)}: ignored in this workspace (.recapignore). "
+            "Bring it back first: recap unignore IMAGE, or Stop ignoring in the app."
+        )
     if not paths:
         raise ConfigError(f"No images to run in {ws.root}.")
     if cfg.validation.enabled and cfg.validation.previous_counts is None:
         d = cfg.model_dump()
         d["validation"].update(previous_counts=ws.db_path, top_up=True)  # reuse the workspace's counts
         cfg = PipelineConfig.model_validate(d)
-    if not spot_check:
+    if not spot_check or settings_file:
         d = cfg.model_dump()
         d["validation"]["enabled"] = False
         cfg = PipelineConfig.model_validate(d)
@@ -148,10 +150,12 @@ def run_workspace(
     stamp = new_stamp(out_dir)
     log_file = setup_logging(out_dir, stamp)
     try:
-        result = _run(ws.settings_path, raw, cfg, sha, paths, stamp, out_dir, log_file, decide, progress, cancel,
-                      counter, ws)  # fmt: skip
+        result = _run(config_path, raw, cfg, sha, paths, stamp, out_dir, log_file, decide, progress, cancel,
+                      counter, ws, comparison=settings_file is not None)  # fmt: skip
     finally:
         close_logging()
+    if settings_file:
+        return result
     ws.record_run(out_dir / f"run_log_{stamp}.yaml")  # wherever output.directory is
     if "manual_counts" in result.files:  # the spot check's counts, also when the outputs are outside the folder
         from recap.counts import read_manual_counts
@@ -164,7 +168,7 @@ def run_workspace(
 
 
 def _run(config_path, raw, cfg, sha, paths, stamp, out_dir, log_file, decide, progress, cancel, counter,
-         ws) -> RunResult:  # fmt: skip
+         ws, comparison: bool = False) -> RunResult:  # fmt: skip
     log.info("recap %s | config %s | %d image(s)", __version__, config_path, len(paths))
     for note in deprecation_notes(cfg):
         log.warning(note)
@@ -222,8 +226,7 @@ def _run(config_path, raw, cfg, sha, paths, stamp, out_dir, log_file, decide, pr
 
     final_json = final.model_dump(mode="json")
     final_cfg_path = out_dir / f"final_config_{stamp}.yaml"
-    reusable = final.model_dump(mode="json")
-    reusable["input"]["images"] = [str(p.resolve()) for p in paths]  # valid from any folder
+    reusable = final.model_dump(mode="json")  # the settings applied: a starting point for recap init --from
     reusable["output"]["directory"] = str(out_dir.resolve())
     if "manual_counts" in files:  # rerun reuses these counts instead of recounting
         reusable["validation"]["previous_counts"] = str(Path(files["manual_counts"]).resolve())
@@ -240,6 +243,7 @@ def _run(config_path, raw, cfg, sha, paths, stamp, out_dir, log_file, decide, pr
                 "tool": "recap",
                 "version": __version__,
                 "command": " ".join(sys.argv),
+                "comparison": comparison,  # run with another settings file: not the images' results
                 "python": sys.version.split()[0],
                 "platform": platform.platform(),
                 "packages": package_versions(PACKAGES),
@@ -252,6 +256,7 @@ def _run(config_path, raw, cfg, sha, paths, stamp, out_dir, log_file, decide, pr
             "changes_from_input": diff(validated, final_json),
             "deprecations": deprecation_notes(cfg),
             "spot_check": validation_log,
+            "image_files": [str(p.resolve()) for p in paths],  # every image of the run (report, compare)
             "images": images_log,
             "files": files,
         },
@@ -261,16 +266,14 @@ def _run(config_path, raw, cfg, sha, paths, stamp, out_dir, log_file, decide, pr
 
 
 def workspace_settings(cfg: PipelineConfig, ws):
-    """settings_for(path) giving an image's settings with its batch and image levels, or None
-    outside a workspace (or with input.use_workspace_settings: false)."""
+    """settings_for(path) giving an image's settings with its batch and image levels."""
     if ws is None:
-        return None  # (in a workspace with input.use_workspace_settings: false, ws.resolve applies no levels)
+        return None
     from recap.io import file_sha256
 
     if ws.upgrade is not None:
         log.warning(ws.upgrade.message())
-    if cfg.input.use_workspace_settings:
-        log.info("Workspace %s: each image with its batch and image settings", ws.root)
+    log.info("Workspace %s: each image with its batch and image settings", ws.root)
     done: dict[Path, object] = {}
 
     def settings_for(p: Path):

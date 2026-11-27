@@ -1,4 +1,4 @@
-# recap 4.4.0
+# recap 5.0.0
 
 **recap: Reconstruction of Cellular Architecture and Phenotypes**
 
@@ -28,7 +28,7 @@ current folder when none is given.
 ```
 recap init FOLDER [--from FILE]  # make a folder of images a workspace (or the app: New...)
 recap validate [FOLDER]          # check its settings, list its images
-recap run [FOLDER]               # run every image with its own settings (-i IMG, --out-of-date)
+recap run [FOLDER]               # run every image with its own settings (-i IMG, --out-of-date, --settings FILE)
 recap status [FOLDER]            # every image: batch, recap's count, up to date?, manual counts, ...
 recap batch assign|remove|list|rename|delete   # staining batches
 recap settings set|unset|clear|show            # settings for the workspace, a batch or an image
@@ -41,9 +41,10 @@ recap train [FOLDER]             # a new model version from corrected masks
 recap models list|compare|use    # versions, their scores, and which one the workspace uses
 recap fiji set|check|show|unset  # the Fiji recap opens for counting
 recap add FILES/FOLDERS [--batch NAME]  # copy images into the workspace, into a batch
+recap ignore [PATH...] / unignore PATH...  # leave images or folders out (.recapignore); no PATH: list
 recap gui [FOLDER]               # desktop app: everything above, plus counting, outlines and settings
 recap desktop-icon               # desktop icon that opens the app
-recap template FILE              # a settings file for a run outside any workspace
+recap template FILE              # a commented settings file to start workspaces from (init --from)
 recap --version
 ```
 
@@ -168,9 +169,10 @@ recap run path/to/images
 
 Or open the app (`recap gui`), press **New...**, choose the folder, and copy a settings file or
 start from the defaults. Images from elsewhere: **Add images** in the app, or
-`recap add FILES_OR_FOLDERS --batch NAME` (copies them in; asks for the batch if you leave it out). In a workspace's `recap.yaml`, `input.images: []` means every image in
-the folder (or give globs relative to it); a settings file run on its own (`recap run file.yaml`)
-lists its images relative to itself. Channel indices are 0-based after loading as
+`recap add FILES_OR_FOLDERS --batch NAME` (copies them in; asks for the batch if you leave it out).
+A workspace is every image in its folder; images to leave out go in `.recapignore` (`recap ignore
+IMAGE`, or **Ignore selected images** in the app). Every run happens in a workspace: a settings
+file of its own is a starting point for one (`recap init FOLDER --from FILE`). Channel indices are 0-based after loading as
 (channel, y, x); for RGB exports red = 0, green = 1, blue = 2. Z-stacks are max-projected.
 
 **First StarDist run:** the model (about 5 MB) downloads from GitHub and is cached in
@@ -184,7 +186,7 @@ A typical comparison of StarDist, Cellpose and manual counting:
 ```bash
 # 1. run both methods on the same images
 pixi run recap run examples                                            # -> examples/results/
-pixi run -e cellpose recap run examples/other_settings/cellpose.yaml   # -> examples/results_cellpose/
+pixi run -e cellpose recap run examples --settings examples/other_settings/cellpose.yaml   # -> examples/results_cellpose/
 
 # 2. count by hand: recap opens Fiji; counts go into examples/recap-data/recap.db
 recap count examples/*.tif --by ana --remember
@@ -257,23 +259,30 @@ See `config_template.yaml` (or `recap template`) for every key with comments.
 Per run, in `output.directory`: `<image>_nuclei.csv`, `<image>_excluded.csv`, label images,
 `<image>_qc.png` (white = VRC−, red = VRC+, blue = excluded), `image_summary_*.csv`,
 `all_nuclei_*.csv`, `run_log_*.yaml` (settings as written / validated / applied, versions,
-hashes), and `final_config_*.yaml` (re-running it reproduces the batch). Every column is
+hashes, the list of images), and `final_config_*.yaml` (the settings applied: start a workspace
+from it with `recap init FOLDER --from`, or rerun them with `recap run FOLDER --settings`). Every column is
 described in [`docs/output_columns.md`](docs/output_columns.md).
 
 ## Workspaces
 
 A workspace is a folder of images (anywhere below it) with:
 
-- `recap.yaml`: the settings for every image. The only settings file of the workspace; batches
-  and single images can change some values (next section), stored in the database.
-- `recap-data/recap.db`: an SQLite index of images, runs, manual counts, corrected masks,
-  batches and their settings, model versions and tuning results; plus `masks/`, `models/`,
+- `recap.yaml`: every setting of the workspace. Its sections are the settings for every image;
+  at the end, `batches:` and `images:` hold what a staining batch or a single image changes
+  (next section). The app and `recap settings` write them there; you can edit it by hand.
+- `.recapignore` (optional): images or folders to leave out, one per line, like a `.gitignore`
+  (`recap ignore` / `unignore`, or Ignore in the app). Ignored images keep their counts and masks
+  but are not run, counted, tuned or trained on.
+- `recap-data/recap.db`: an SQLite index of images, runs, manual counts, corrected masks, which
+  image is in which batch, model versions and tuning results; plus `masks/`, `models/`,
   `tuning/`, `reports/`, `fiji/` and `backups/`.
 
 Images are identified by content, and paths are stored relative to the folder, so the folder can
 be moved or shared. Make one with `recap init FOLDER [--from settings.yaml]` or the app's
 **New...**; a folder used with recap 4.2 (a `recap-data/` but no `recap.yaml`) is made a workspace
-the same way, and its workspace-wide settings move from the database into `recap.yaml`. When a
+the same way. Settings that older versions kept in the database (4.2: workspace-wide; 4.3 and
+4.4: batches and single images) move into `recap.yaml` when recap 5.0 opens the workspace, and an
+old `input.images` list becomes `.recapignore` lines for the images it left out. When a
 newer recap opens a workspace, it first copies `recap.db` to
 `recap-data/backups/recap_v<old version>_<date>_<time>.db`, then upgrades it; an older recap
 refuses to open a workspace used by a newer one.
@@ -298,13 +307,35 @@ recap settings show data/day79_04.tif        # effective settings, and where eac
 recap settings clear --image data/day79_04.tif               # back to the batch's settings
 ```
 
+All of it is written into `recap.yaml`, after the workspace's own sections:
+
+```yaml
+filters:
+  min_focus: 0.6
+# ...
+batches:
+  stain 2026-10-03:
+    note: infected control slide 4
+    normalization:
+      vrc_range: [3, 30]
+images:
+  data/day79_04.tif:
+    reason: weak ICP8
+    by: ana
+    date: 2026-11-25
+    normalization:
+      vrc_weight: 1.5
+```
+
+Which images are in which batch is kept in the database (`recap batch list`). An image's entry
+follows it when the file is moved or renamed inside the workspace.
+
 The app's **Settings** tab (Guided mode) saves the same way: change values with the preview, choose *Save to:*
 workspace, the batch or this image. Levels can change recovery, segmentation thresholds,
 fragment merging, filters, the infection call and `exclude_regions`. They cannot change the
 model, so every image in a workspace is segmented by the same one. An image's own settings need
 a reason. `recap run`, the spot check, tuning and training all use each image's effective
-settings (turn the batch and image levels off with `input.use_workspace_settings: false`); the
-image summary lists the levels used (`settings`), what they changed (`overridden`) and the
+settings; the image summary lists the levels used (`settings`), what they changed (`overridden`) and the
 reason. Training on images with their corrected settings is what makes a trained model hold up
 on images of varying quality.
 

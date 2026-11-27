@@ -211,3 +211,23 @@ def test_add_images_dialog(win, tmp_path_factory, monkeypatch):
     assert rows["fresh.tif"]["batch"] == "stain B" and rows["img1.tif"]["batch"] == "stain B"
     assert "1 image(s) added" in win.images.msg.text() and "1 already in the workspace" in win.images.msg.text()
     assert win.image_box.count() == 7
+
+
+def test_ignore_and_bring_back_in_the_images_tab(win):
+    from recap.gui import common
+
+    w, panel = win, win.images
+    assert panel.table.rowCount() == 6
+    panel.table.selectRow(0)
+    name = panel.table.item(0, 0).text()
+    panel.set_ignored(True)
+    assert "1 image(s) ignored" in panel.msg.text()
+    assert panel.table.rowCount() == 5 and w.image_box.count() == 5  # gone from "all images" and the image list
+    panel.filter.setCurrentIndex(panel.filter.count() - 1)
+    assert panel.filter.currentText() == "ignored images (1)" and panel.table.item(0, 0).text() == name
+    assert name in (common.STATE.workspace.root / ".recapignore").read_text(encoding="utf-8")
+    panel.table.selectRow(0)
+    panel.set_ignored(False)
+    assert panel.table.rowCount() == 0 and "back in the workspace" in panel.msg.text()
+    panel.filter.setCurrentIndex(0)
+    assert panel.table.rowCount() == 6 and w.image_box.count() == 6

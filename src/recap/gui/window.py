@@ -522,6 +522,8 @@ class RecapWindow(QMainWindow):
         self.image_box.blockSignals(True)
         self.image_box.clear()
         for r in ws.status() if ws else []:
+            if r["state"] == "ignored" and r["sha256"] != C.STATE.sha:
+                continue  # (ignored images: Images tab, filter "ignored images")
             self.image_box.addItem(f"{r['name']}  [{r['state']}]", r["sha256"])
         if C.STATE.sha:
             self.image_box.setCurrentIndex(self.image_box.findData(C.STATE.sha))

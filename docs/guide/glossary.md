@@ -4,7 +4,8 @@
 
 | Word | Meaning |
 |---|---|
-| **workspace** | A folder of images with one settings file (`recap.yaml`) and recap's folder `recap-data/` (database `recap.db`, corrected masks, model versions, tuning, reports, backups). |
+| **workspace** | A folder of images with one settings file (`recap.yaml`, all levels of the settings), an optional `.recapignore` (images left out) and recap's folder `recap-data/` (database `recap.db`, corrected masks, model versions, tuning, reports, backups). |
+| **ignored image** | An image listed in `.recapignore`: kept in the folder and in the database, but not run, counted, tuned, trained on or reported. `recap ignore` / `unignore`, or Ignore in the app. |
 | **recap.yaml** | The workspace's settings, for every image. The workspace level of the settings. |
 | **batch** (staining batch) | Images stained together. A batch can change some settings for its images. |
 | **own settings** | Settings saved for one image only, with a reason. |

@@ -28,7 +28,9 @@ exiting.
 
 **A new setting**
 1. Add a field with a description and range to the model in `src/recap/config.py`.
-2. Add it, with a comment, to `TEMPLATE` in the same file (`recap template` writes it).
+2. Add it, with a comment, to `TEMPLATE` in the same file (`recap template` writes it), then
+   `pixi run recap template config_template.yaml --force` (a test checks the two match). If a
+   staining batch or a single image may change it, add its section to `SECTIONS` in `levels.py`.
 3. Use it; add a test (including an invalid value if it has a range).
 4. Mention it in `README.md` if users will change it; add a `CHANGELOG.md` line.
 

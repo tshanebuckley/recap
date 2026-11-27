@@ -44,11 +44,12 @@ def outputs(tmp_path_factory):
     (d / "data").mkdir()
     for i in range(2):
         tifffile.imwrite(d / "data" / f"img{i}.tif", make_synthetic(seed=i))
-    base = "input: {images: [data/*.tif]}\nnormalization: {vrc_range: [150, 3000]}\n"
-    (d / "a.yaml").write_text(base + "filters: {min_circularity: 0.8}\noutput: {directory: ra}\n", encoding="utf-8")
-    (d / "b.yaml").write_text(base + "output: {directory: rb}\n", encoding="utf-8")
-    run_cli("run", d / "a.yaml")
-    run_cli("run", d / "b.yaml")
+    base = "input: {}\nnormalization: {vrc_range: [150, 3000]}\n"
+    settings = d / "recap.yaml"  # one workspace; its settings change between the runs
+    settings.write_text(base + "filters: {min_circularity: 0.8}\noutput: {directory: ra}\n", encoding="utf-8")
+    assert run_cli("run", d).exit_code == 0
+    settings.write_text(base + "output: {directory: rb}\n", encoding="utf-8")
+    assert run_cli("run", d).exit_code == 0
     mc = d / "mc.csv"
     for i in range(2):
         run_cli(
@@ -61,7 +62,7 @@ def outputs(tmp_path_factory):
             "ana",
         )
     run_cli("import-counts", d / "data" / "img0.tif", "--nuclei", "5", "-o", mc, "--by", "ben")
-    (d / "s.yaml").write_text(
+    settings.write_text(
         base + f"validation: {{enabled: true, sample_size: 2, previous_counts: {mc.as_posix()}}}\n"
         "output: {directory: rs}\n",
         encoding="utf-8",
@@ -73,7 +74,7 @@ def outputs(tmp_path_factory):
 
     start, fijicount.FijiSession._start = fijicount.FijiSession._start, NoFiji
     try:
-        run_cli("run", d / "s.yaml", input="s\n")
+        run_cli("run", d, input="s\n")
     finally:
         fijicount.FijiSession._start = start
     run_cli("compare", d / "ra", d / "rb", "--names", "A", "B", "--out", d / "cmp")
@@ -158,5 +159,5 @@ def test_relative_links_in_docs_resolve():
     guide = (root / "docs" / "guide" / "README.md").read_text(encoding="utf-8")
     stories = set(re.findall(r"## (US-\d+)", "".join(p.read_text(encoding="utf-8")
                                                      for p in (root / "docs" / "guide").glob("0*.md"))))  # fmt: skip
-    assert stories == {f"US-{i:02d}" for i in range(1, 30)}, sorted(stories)  # every story has a section
-    assert "US-29" in guide
+    assert stories == {f"US-{i:02d}" for i in range(1, 31)}, sorted(stories)  # every story has a section
+    assert "US-30" in guide

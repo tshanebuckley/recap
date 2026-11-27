@@ -32,20 +32,21 @@ errors: used everywhere
 | `counts` | `ManualCount`, its CSV format, program-vs-manual comparison. | Yes, for manual counting. |
 | `importers` | Counts from Fiji Cell Counter XML / Multi-point CSV / typed totals. | Yes. |
 | `report`, `compare` | Cross-run and cross-method summaries. | Yes. |
-| `workspace` | A folder of images with one settings file (`recap.yaml`) and one database (`recap-data/recap.db`): images, runs (and whether each image is up to date), manual counts, corrected masks, batches and their settings, model versions (and which is used), tuning, reports. `open_workspace`, `init_workspace`. | Yes: the app's data model. The CLI and the app call the same methods. |
-| `settingsfile` | Edit `recap.yaml` keeping its comments (ruamel.yaml): the workspace level of the settings. | Via `workspace`. |
+| `workspace` | A folder of images with one settings file (`recap.yaml`: every level of the settings), an optional `.recapignore` and one database (`recap-data/recap.db`): images, runs (and whether each image is up to date), manual counts, corrected masks, batch membership, model versions (and which is used), tuning, reports. `open_workspace`, `init_workspace`; moves settings older versions kept in the database into `recap.yaml` when it opens a workspace. | Yes: the app's data model. The CLI and the app call the same methods. |
+| `settingsfile` | Edit `recap.yaml` keeping its comments (ruamel.yaml): the workspace's own sections and the `batches:` / `images:` entries. | Via `workspace`. |
+| `ignore` | `.recapignore`: which images a workspace leaves out (gitignore-like lines). | Via `workspace`. |
 | `counting` | Manual counting shared by `recap count`, the app and the spot check: recap's adjusted view, saving under the counter's name. | Yes. |
 | `db`, `migrations` | SQLModel tables; version check, backup and Alembic upgrade when a workspace is opened. | Via `workspace`. |
 | `evaluate` | Score a segmentation against edited masks (F1, precision, recall, count error). | Yes. |
 | `tune` | Search settings, scored against edited masks. | Yes (Tuning panel). |
 | `train` | Fine-tune StarDist / Cellpose on edited masks; versioned models; comparison. | Yes (Training panel). |
 | `fijicount` | Counting in Fiji (started as its own program with `assets/fiji_count.groovy`). | Yes. |
-| `levels` | Settings per staining batch and image on top of recap.yaml: allowed keys, merge, diff, `settings_hash` (the out-of-date check). Stored by `workspace`. | Yes: the run, tuning, training and guided mode use it. |
+| `levels` | Settings per staining batch and image on top of the workspace's: allowed keys, merge, diff, `nest` / `flatten` (recap.yaml's layout), `settings_hash` (the out-of-date check). Stored in recap.yaml by `workspace`. | Yes: the run, tuning, training and guided mode use it. |
 | `gui` (package) | napari plugin (`napari.yaml`): the recap panel (workspace, runs, Manual and Guided modes), Tuning and Training; `recap gui`; one app per user. See `docs/gui.md` for the command behind every button. | It is the GUI. |
 | `desktop` | `recap desktop-icon`: per-OS shortcut that runs `recap gui`; replaces recap's old icons. | Only for the icon command. |
 | `fiji` | Find, save and check the Fiji installation; per-OS launchers and folders. | Via `fijicount`. |
 | `spotcheck` | Random spot check; counting is done by a `counter` callback (Fiji or napari). | Via `runner`. |
-| `runner` | `run_workspace`: the whole `recap run` and the app's Run buttons (spot check, batch, run log, recorded in the workspace); `run_pipeline` for a settings file outside a workspace. | Yes, for runs. |
+| `runner` | `run_workspace`: the whole `recap run` and the app's Run buttons (spot check, batch, run log, recorded in the workspace); `run_pipeline(path)` the same for a workspace given as a path; `settings_file=` for comparison runs. Every run is a workspace run. | Yes, for runs. |
 | `runlog` | Log file setup, config diffs, package versions. | Indirectly. |
 | `cli` | Typer commands: argument parsing, messages, exit codes. Nothing else. | No. |
 | `errors` | `RecapError`, `ConfigError`, `Cancelled`. | Catch these. |
@@ -74,12 +75,14 @@ r = ws.resolve(sha)                               # an image's settings: r.cfg, 
 ws.save_effective("batch", sha, edited_cfg, keys) # store edited values at a level (only the differences)
 ws.update_level("image", sha, {"filters.min_focus": 0.6}, reason="dim")   # = recap settings set
 ws.use_model("stardist", 2); ws.report(); ws.import_count(image, xml_file)
+ws.ignore([image_or_folder]); ws.unignore([...]); ws.images()   # .recapignore; images() leaves ignored ones out
 ```
 
 ### One image (previews, interactive work)
 
 ```python
 cfg = ws.resolve(sha).cfg                         # or: raw, cfg, sha = load_config(Path("settings.yaml"))
+                                                  # (a file's batches: and images: are not part of cfg)
 res = process_file(cfg, Path("image.tif"))        # or process_image(cfg, dapi, vrc, neuron)
 res.labels            # int array, 0 = background, 1..n = counted nuclei (rows of res.table)
 res.table             # pandas DataFrame, one row per counted nucleus (docs/output_columns.md)
