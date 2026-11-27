@@ -117,3 +117,60 @@ def test_real_stardist_in_the_helper_matches_in_process(synth_dir):
     finally:
         use_worker(False)
     assert there.max() == here.max() and np.array_equal(there > 0, here > 0)
+
+
+def test_nixos_driver_is_found_once(tmp_path, monkeypatch):
+    """NixOS: the environment's OpenGL loader is pointed at /run/opengl-driver, by restarting once."""
+    from recap.gui import app
+
+    root = tmp_path / "opengl-driver"
+    monkeypatch.setattr(app.sys, "platform", "linux")
+    assert app.system_gl_env({}, root) is None  # not NixOS: nothing changes
+    (root / "share" / "glvnd" / "egl_vendor.d").mkdir(parents=True)
+    env = app.system_gl_env({"LD_LIBRARY_PATH": "/x"}, root)
+    assert env == {
+        "__EGL_VENDOR_LIBRARY_DIRS": str(root / "share" / "glvnd" / "egl_vendor.d"),
+        "LD_LIBRARY_PATH": str(root / "lib") + os.pathsep + "/x",
+        "RECAP_SYSTEM_GL": "0",
+    }
+    assert app.system_gl_env({**env}, root) is None  # the restarted app does not restart again
+    assert app.system_gl_env({"__EGL_VENDOR_LIBRARY_DIRS": "/mine"}, root) is None  # set by the user
+    assert app.system_gl_env({"RECAP_SYSTEM_GL": "0"}, root) is None  # turned off
+    monkeypatch.setattr(app.sys, "platform", "win32")
+    assert app.system_gl_env({}, root) is None
+
+    monkeypatch.setattr(app.sys, "platform", "linux")
+    for k in ("__EGL_VENDOR_LIBRARY_DIRS", "RECAP_SYSTEM_GL"):
+        monkeypatch.delenv(k, raising=False)
+    real = app.system_gl_env
+    monkeypatch.setattr(app, "system_gl_env", lambda: real(None, root))
+    calls = []
+    monkeypatch.setattr(app.os, "execve", lambda exe, argv, environ: calls.append((exe, argv, environ)))
+    monkeypatch.setattr(app.sys, "orig_argv", ["python", "-m", "recap", "gui", "my-ws"])
+    app.use_system_gl()
+    ((exe, argv, environ),) = calls
+    assert exe == app.sys.executable and argv == ["python", "-m", "recap", "gui", "my-ws"]
+    assert environ["RECAP_SYSTEM_GL"] == "0" and environ["__EGL_VENDOR_LIBRARY_DIRS"].endswith("egl_vendor.d")
+
+
+def test_no_opengl_gives_a_message_not_a_traceback(monkeypatch):
+    pytest.importorskip("qtpy.QtWidgets")
+    from recap.gui import app
+
+    shown = []
+    monkeypatch.setattr(app, "opengl_works", lambda: False)
+    monkeypatch.setattr(app, "say_no_opengl", lambda: shown.append(True))
+    monkeypatch.setattr(app, "use_system_gl", lambda: None)
+    monkeypatch.setattr(app, "keep_tensorflow_out", lambda: None)
+
+    class Done(Exception):
+        pass
+
+    def finish(code):
+        raise Done(code)
+
+    monkeypatch.setattr(app, "finish", finish)
+    with pytest.raises(Done) as e:
+        app.run()
+    assert shown == [True] and e.value.args == (1,)
+    assert "hardware.graphics.enable" in app.NO_OPENGL

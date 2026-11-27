@@ -91,6 +91,24 @@ seconds per redraw), the app exits promptly, and TensorFlow's libraries never lo
 window's thread (the Windows "Not Responding" freeze on the first segmentation). The command line
 runs StarDist in its own process, as before.
 
+**OpenGL.** napari draws with OpenGL, and recap checks for it before opening the window: without
+it, recap says what to do (a message box and the same text in the terminal) instead of failing
+with a traceback on the first image. On **NixOS** the graphics driver is in `/run/opengl-driver`,
+where the OpenGL loader in recap's environment (libglvnd from conda-forge) does not look (Qt
+prints `EGL not available`). `recap gui` then restarts itself once with
+
+```
+__EGL_VENDOR_LIBRARY_DIRS=/run/opengl-driver/share/glvnd/egl_vendor.d
+LD_LIBRARY_PATH=/run/opengl-driver/lib:$LD_LIBRARY_PATH
+```
+
+which gives the real GPU driver (tested: AMD Radeon 680M, radeonsi). It does nothing on other
+systems, or when `__EGL_VENDOR_LIBRARY_DIRS` is already set; `RECAP_SYSTEM_GL=0` turns it off.
+Other programs in the environment (napari on its own, a script) need the two variables set by
+hand, for example in `.envrc`. If `/run/opengl-driver` is missing, enable graphics in the NixOS
+configuration (`hardware.graphics.enable = true;`). Linux without a GPU (a VM, a remote desktop)
+needs Mesa installed on the system; recap then uses its software renderer.
+
 **Window size.** The window opens at 1500 x 950, or smaller on a smaller screen, and keeps itself
 on the screen; it needs about 870 x 300 (the Show bar and the Settings rows scroll sideways when
 narrower). The side panel widens to the Settings rows when there is room.

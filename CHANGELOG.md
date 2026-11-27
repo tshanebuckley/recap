@@ -1,5 +1,19 @@
 # Changelog
 
+## 5.3.3 — 2026-11-27
+Fix: the app on NixOS (`EGL not available`, then a traceback from napari on the first image).
+
+- **NixOS's graphics driver is found.** recap's environment loads OpenGL through libglvnd, which
+  looks for drivers where most Linux systems keep them; NixOS keeps them in `/run/opengl-driver`.
+  When that folder exists (and `__EGL_VENDOR_LIBRARY_DIRS` is not already set), `recap gui`
+  restarts itself once with `__EGL_VENDOR_LIBRARY_DIRS` and `LD_LIBRARY_PATH` pointing there, which
+  gives the real GPU driver (tested on NixOS: AMD Radeon 680M, radeonsi). Nothing changes on other
+  systems; `RECAP_SYSTEM_GL=0` turns it off.
+- **No OpenGL: a message instead of a traceback.** recap checks that OpenGL works before opening
+  the window, and otherwise says what to do (message box and terminal) and exits.
+- Documented in `docs/gui.md` (OpenGL). Tests: the NixOS variables and the single restart, and
+  the message when OpenGL is missing.
+
 ## 5.3.2 — 2026-11-27
 Fix: pixi could not read `pixi.toml` (`expected a string, found table` at `conda-pypi-map`).
 

@@ -14,6 +14,17 @@ from recap.gui.data import ImageView, example_workspace
 from recap.gui.single_instance import SingleInstance
 
 TITLE = f"recap {__version__}: Reconstruction of Cellular Architecture and Phenotypes"
+log = logging.getLogger(__name__)
+
+NIXOS_GL = Path("/run/opengl-driver")  # where NixOS keeps its graphics drivers
+NO_OPENGL = (
+    "recap could not start OpenGL, which it needs to draw images.\n\n"
+    "- NixOS: check that hardware.graphics.enable = true; is in your configuration "
+    "(recap finds the driver in /run/opengl-driver itself).\n"
+    "- A virtual machine or remote desktop: install Mesa, which draws without a graphics card.\n"
+    "- Otherwise: update the graphics driver.\n\n"
+    "More in docs/gui.md, section 'OpenGL'."
+)
 
 
 def add_layers(viewer, view: ImageView) -> None:
@@ -43,6 +54,63 @@ def bring_to_front(viewer_or_window) -> None:
         win.showNormal()
     win.raise_()
     win.activateWindow()
+
+
+def system_gl_env(environ=None, root: Path = NIXOS_GL) -> dict[str, str] | None:
+    """NixOS keeps its graphics driver in /run/opengl-driver, where the OpenGL loader in recap's
+    environment (libglvnd from conda-forge) does not look: Qt then finds no EGL ("EGL not
+    available") and napari fails on the first image. Returns the variables that point the loader
+    there, or None: not Linux, no /run/opengl-driver, already set, or RECAP_SYSTEM_GL=0."""
+    environ = os.environ if environ is None else environ
+    vendors = root / "share" / "glvnd" / "egl_vendor.d"
+    if not sys.platform.startswith("linux") or environ.get("RECAP_SYSTEM_GL") == "0":
+        return None
+    if environ.get("__EGL_VENDOR_LIBRARY_DIRS") or not vendors.is_dir():
+        return None
+    ld = environ.get("LD_LIBRARY_PATH", "")
+    return {
+        "__EGL_VENDOR_LIBRARY_DIRS": str(vendors),
+        "LD_LIBRARY_PATH": str(root / "lib") + (os.pathsep + ld if ld else ""),
+        "RECAP_SYSTEM_GL": "0",  # once: the restarted app does not restart again
+    }
+
+
+def use_system_gl() -> None:
+    """On NixOS, restart recap once with system_gl_env (the library path is read only when a
+    program starts, so setting it here would not reach this process)."""
+    env = system_gl_env()
+    if env is None:
+        return
+    argv = list(getattr(sys, "orig_argv", None) or [sys.executable, *sys.argv])
+    log.info("Using the system's OpenGL driver in %s (NixOS): restarting with it", NIXOS_GL)
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os.execve(sys.executable, argv, {**os.environ, **env})
+
+
+def opengl_works() -> bool:
+    """True if Qt can make an OpenGL context current (napari's canvas needs one). Without it napari
+    fails with a traceback on the first image; recap says what to do instead."""
+    from qtpy.QtGui import QGuiApplication, QOffscreenSurface, QOpenGLContext
+
+    if QGuiApplication.platformName() == "offscreen":  # tests, headless use: nothing to check
+        return True
+    ctx = QOpenGLContext()
+    if not ctx.create():
+        return False
+    surface = QOffscreenSurface()
+    surface.create()
+    ok = ctx.makeCurrent(surface)
+    if ok:
+        ctx.doneCurrent()
+    return bool(ok)
+
+
+def say_no_opengl() -> None:
+    from qtpy.QtWidgets import QMessageBox
+
+    log.error(NO_OPENGL)  # also in the terminal (logging prints errors when nothing else is set up)
+    QMessageBox.critical(None, "recap: no OpenGL", NO_OPENGL)
 
 
 def keep_tensorflow_out() -> None:
@@ -88,14 +156,22 @@ def run(path: Path | None = None, full_napari: bool = False) -> bool:
     recap's own window, or (full_napari) napari with recap's panels docked.
     Returns False if it was already running (that window is brought forward). After the window
     closes the process ends (finish)."""
+    use_system_gl()
     keep_tensorflow_out()
     guard = SingleInstance()
     if not guard.acquire():
         return False
     try:
+        from napari.qt import get_qapp
         from qtpy.QtCore import QTimer
 
         from recap.gui import common, panels
+
+        get_qapp()
+        if not opengl_works():
+            say_no_opengl()
+            guard.release()
+            finish(1)
 
         folder = Path(path) if path else next(iter(common.recent_workspaces()), None) or example_workspace()
         if folder is not None and folder.is_file():  # a settings file or image: its workspace
