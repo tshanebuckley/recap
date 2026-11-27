@@ -59,9 +59,12 @@ def _is_mask(name: str) -> bool:
 class RecapPanel(QWidget):
     COLUMNS = ["image", "batch", "recap (VRC+)", "state", "manual (by)", "corrected", "own settings", "QC"]
 
-    def __init__(self, napari_viewer):
+    def __init__(self, napari_viewer, modes: bool = True, guided: GuidedPage | None = None):
+        """modes=False: no Manual/Guided switch (the recap window has its own tabs and passes its
+        Guided page in `guided`)."""
         super().__init__()
         self.viewer = napari_viewer
+        self.modes = modes
         self.asker = C.Asker(self)
         self.bridge = C.Bridge()
         self.bridge.progress.connect(lambda i, n: (self.bar.setMaximum(n), self.bar.setValue(i)))
@@ -131,6 +134,8 @@ class RecapPanel(QWidget):
         more.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         menu = QMenu(more)
         for label, fn in (
+            ("Add image files...", lambda: self.add_images(False)),
+            ("Add a folder of images...", lambda: self.add_images(True)),
             ("Batches...", self.show_batches),
             ("Import counts (Cell Counter XML / CSV)...", self.import_counts),
             ("Report: recap vs manual counts", self.make_report),
@@ -160,6 +165,17 @@ class RecapPanel(QWidget):
         self.banner.hide()
         lay.addWidget(self.banner)
 
+        C.STATE.on_changed.append(self.refresh)
+        if not modes:
+            self.manual, self.mode = None, "window"
+            self.guided = guided or GuidedPage(napari_viewer)
+            self.guided.saved.connect(self._settings_saved)
+            lay.addStretch()
+            self._fill_recent()
+            if C.STATE.workspace is not None:
+                self.set_workspace(C.STATE.workspace)
+            return
+
         # modes
         row = QHBoxLayout()
         self.mode_group = QButtonGroup(self)
@@ -185,7 +201,6 @@ class RecapPanel(QWidget):
         self.stack.addWidget(self.guided)
         lay.addWidget(self.stack, 2)
 
-        C.STATE.on_changed.append(self.refresh)
         self._fill_recent()
         if C.STATE.workspace is not None:
             self.set_workspace(C.STATE.workspace)
@@ -220,7 +235,7 @@ class RecapPanel(QWidget):
             self.set_workspace(ws)
 
     def set_workspace(self, ws) -> None:
-        if not self.guided.confirm_leave(self):
+        if not self.confirm_leave():
             return
         C.STATE.workspace, C.STATE.sha = ws, None
         try:
@@ -301,7 +316,7 @@ class RecapPanel(QWidget):
         from recap.gui.app import add_layers
         from recap.gui.data import view_from_workspace
 
-        if sha != C.STATE.sha and not self.guided.confirm_leave(self):
+        if sha != C.STATE.sha and not self.confirm_leave():
             return
         try:
             view = view_from_workspace(C.STATE.workspace, sha)
@@ -324,9 +339,15 @@ class RecapPanel(QWidget):
             self.guided.load(sha)
         self._visibility()
         self._banner()
-        self.manual.image_opened(view)
-        self.say(f"{view.image.name}: " + ("; ".join(view.messages) if view.messages else
-                 "manual mode: count or correct the outlines; guided mode: adjust the settings."))  # fmt: skip
+        if self.manual is not None:
+            self.manual.image_opened(view)
+        hint = ("manual mode: count or correct the outlines; guided mode: adjust the settings." if self.modes
+                else "use the Count, Fix outlines or Settings tab.")  # fmt: skip
+        self.say(f"{view.image.name}: " + ("; ".join(view.messages) if view.messages else hint))
+
+    def confirm_leave(self, parent=None) -> bool:
+        """Before another image or workspace (the recap window replaces this with its own check)."""
+        return self.guided.confirm_leave(parent or self)
 
     def set_mode(self, mode: str) -> None:
         if mode == self.mode:
@@ -343,6 +364,8 @@ class RecapPanel(QWidget):
 
     def _visibility(self) -> None:
         """Manual mode shows the outlines being corrected and counts; Guided mode its preview only."""
+        if not self.modes:
+            return  # the recap window decides per tab
         guided = self.mode == "guided"
         for layer in self.viewer.layers:
             name = layer.name
@@ -381,7 +404,7 @@ class RecapPanel(QWidget):
                 return self.say("Every image is up to date.")
         else:
             shas = []
-        if which == "current" and self.mode == "guided" and self.guided.unsaved():
+        if which == "current" and self.guided.unsaved():
             return self.say("Save (or undo) the Guided mode changes first: a run uses the saved settings.")
         paths = [ws.image_path(s) for s in shas] or None
         counter = None
@@ -453,6 +476,17 @@ class RecapPanel(QWidget):
                 self.guided.load(C.STATE.sha)
         self.say(f"{len(shas)} image(s) " + (f"in batch {name.strip()!r}." if name.strip() else "out of their batch."))
 
+    def add_images(self, folder: bool) -> None:
+        from recap.gui.dialogs import add_images
+
+        if C.STATE.workspace is None:
+            return self.say("Open a workspace first.")
+        res = add_images(self, C.STATE.workspace, folder)
+        if res is not None:
+            self.refresh()
+            C.STATE.changed()
+            self.say(res.message() + " Press Run out-of-date to process them.")
+
     def show_summary(self) -> None:
         from recap.gui.dialogs import SummaryDialog
 
@@ -475,7 +509,7 @@ class RecapPanel(QWidget):
 
     def _set_name(self, ask: bool = False) -> str | None:
         name = C.counter_name(self, ask)
-        if name:
+        if name and self.manual is not None:
             self.manual.name_label.setText(f"Counting and correcting as <b>{name}</b>")
         return name
 
@@ -523,6 +557,33 @@ class RecapPanel(QWidget):
         if self._fiji is not None:
             self._fiji.close()
         super().closeEvent(event)
+
+    def count_in_fiji(self, sha: str | None) -> None:
+        """Count an image by hand in Fiji (recap's adjusted view); the count is imported when done."""
+        from recap.counting import count_in_fiji, fiji_session
+
+        ws = C.STATE.workspace
+        if sha is None:
+            return self.say("Select or open an image first.")
+        name = self._set_name()
+        if name is None:
+            return
+        try:
+            self._fiji = self._fiji or fiji_session(ws)
+        except RecapError as e:
+            return self.say(f"{e} (More > Fiji location)")
+        image = ws.image(sha)["image"]["name"]
+        self.say(f"Counting {image} in Fiji... (press 'Done counting' there)")
+
+        def done(out):
+            self.refresh()
+            if out.status != "done":
+                return self.say(f"{image}: not imported ({out.status}).")
+            mc = out.count
+            self.say(f"Imported from Fiji: {mc.nuclei} nuclei ({mc.infected} VRC+) by {mc.counted_by}.")
+
+        C.run_in_background(lambda: count_in_fiji(ws, sha, self._fiji, name, self.asker.yesno), done,
+                            lambda e: self.say(f"Fiji: {e}"))  # fmt: skip
 
 
 class ManualPage(QWidget):
@@ -622,30 +683,7 @@ class ManualPage(QWidget):
 
     # ---- counting -----------------------------------------------------------------------------------
     def count_in_fiji(self) -> None:
-        from recap.counting import count_in_fiji, fiji_session
-
-        ws, sha = C.STATE.workspace, self.panel.selected_sha()
-        if sha is None:
-            return self.panel.say("Select or open an image first.")
-        name = self.panel._set_name()
-        if name is None:
-            return
-        try:
-            self.panel._fiji = self.panel._fiji or fiji_session(ws)
-        except RecapError as e:
-            return self.panel.say(f"{e} (More > Fiji location)")
-        image = ws.image(sha)["image"]["name"]
-        self.panel.say(f"Counting {image} in Fiji... (press 'Done counting' there)")
-
-        def done(out):
-            self.panel.refresh()
-            if out.status != "done":
-                return self.panel.say(f"{image}: not imported ({out.status}).")
-            mc = out.count
-            self.panel.say(f"Imported from Fiji: {mc.nuclei} nuclei ({mc.infected} VRC+) by {mc.counted_by}.")
-
-        C.run_in_background(lambda: count_in_fiji(ws, sha, self.panel._fiji, name, self.panel.asker.yesno), done,
-                            lambda e: self.panel.say(f"Fiji: {e}"))  # fmt: skip
+        self.panel.count_in_fiji(self.panel.selected_sha())
 
     def count_here(self) -> None:
         if C.STATE.sha is None:

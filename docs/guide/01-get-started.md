@@ -38,7 +38,9 @@ Mac says "Apple M…"). Write down every security prompt macOS shows, for the RE
 Double-click the icon (or `recap gui` in a terminal). It opens the last workspace you used; the
 very first time, the example workspace if this copy of recap has one (installs from the
 repository do), otherwise it asks you to open a folder. Double-clicking again brings the open
-window to the front instead of starting a second copy.
+window to the front instead of starting a second copy. The window has the image on the left
+and four tabs on the right: Images, Count, Fix outlines, Settings (see the
+[guide's overview](README.md#the-recap-window-at-a-glance)).
 
 **Done when:** one window, on your last workspace. If an old icon is left over after moving
 recap, run `recap desktop-icon` once: it removes recap's old icons and makes one new one.

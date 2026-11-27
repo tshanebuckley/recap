@@ -57,10 +57,11 @@ def named_channels(img: np.ndarray, cfg: PipelineConfig | None) -> dict[str, tup
         return {f"channel {i}": (img[i], colours[i % len(colours)]) for i in range(len(img))}
     inp = cfg.input
     channels: dict[str, tuple[np.ndarray, str]] = {}
+    # the channel numbers are in the names, so a wrong channel in the settings shows at a glance
     if inp.neuron_channel is not None:
-        channels[f"channel {inp.neuron_channel} (neuron_channel)"] = (img[inp.neuron_channel], "red")
-    channels["VRC (ICP8)"] = (img[inp.vrc_channel], "green")
-    channels["DAPI"] = (img[inp.dapi_channel], "blue")
+        channels[f"marker (ch {inp.neuron_channel})"] = (img[inp.neuron_channel], "red")
+    channels[f"ICP8 (ch {inp.vrc_channel})"] = (img[inp.vrc_channel], "green")
+    channels[f"DAPI (ch {inp.dapi_channel})"] = (img[inp.dapi_channel], "blue")
     return channels
 
 

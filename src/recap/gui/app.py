@@ -36,8 +36,8 @@ def add_layers(viewer, view: ImageView) -> None:
         viewer.layers.selection.active = layer
 
 
-def bring_to_front(viewer) -> None:
-    win = viewer.window._qt_window  # napari exposes no public handle for this yet
+def bring_to_front(viewer_or_window) -> None:
+    win = getattr(getattr(viewer_or_window, "window", None), "_qt_window", viewer_or_window)  # napari: no public handle
     if win.isMinimized():
         win.showNormal()
     win.raise_()
@@ -65,8 +65,9 @@ def dock_main(viewer, main) -> None:
     QTimer.singleShot(0, dock.raise_)  # after napari has shown the tabs (it brings the last one forward)
 
 
-def run(path: Path | None = None) -> bool:
-    """Start the app on a workspace folder (default: the last one used, else the example workspace).
+def run(path: Path | None = None, full_napari: bool = False) -> bool:
+    """Start the app on a workspace folder (default: the last one used, else the example workspace):
+    recap's own window, or (full_napari) napari with recap's panels docked.
     Returns False if it was already running (that window is brought forward)."""
     software_gl_fix()
     guard = SingleInstance()
@@ -82,6 +83,15 @@ def run(path: Path | None = None) -> bool:
             from recap.workspace import workspace_root
 
             folder = workspace_root(folder) or folder.parent
+        if not full_napari:
+            from recap.gui.window import open_window, start
+
+            app, win = open_window(folder)
+            guard.on_activate = lambda: bring_to_front(win)
+            guard.listen()
+            QTimer.singleShot(0, lambda: start(win, folder))
+            app.exec()
+            return True
         import napari
 
         viewer = napari.Viewer(title=TITLE)

@@ -6,11 +6,15 @@ from __future__ import annotations
 from pathlib import Path
 
 from qtpy.QtWidgets import (
+    QComboBox,
     QDialog,
+    QDialogButtonBox,
     QFileDialog,
+    QFormLayout,
     QHBoxLayout,
     QInputDialog,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QPushButton,
     QTextEdit,
@@ -238,3 +242,100 @@ def text_dialog(parent, title: str, text: str) -> None:
     lay.addWidget(t)
     d.resize(560, 360)
     d.exec()
+
+
+NEW_BATCH, NO_BATCH = "\0new", "\0none"
+
+
+class AddImagesDialog(QDialog):
+    """Which staining batch new images belong to: an existing one, a new one, or none."""
+
+    def __init__(self, ws: Workspace, files: list[Path], parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("recap: add images")
+        lay = QVBoxLayout(self)
+        names = ", ".join(p.name for p in files[:3]) + (f" and {len(files) - 3} more" if len(files) > 3 else "")
+        head = QLabel(f"<b>{len(files)} image(s)</b>: {names}<br>Which staining batch are they from?")
+        head.setWordWrap(True)
+        lay.addWidget(head)
+        form = QFormLayout()
+        self.choice = QComboBox()
+        for b in ws.batches():
+            self.choice.addItem(f"{b['name']}  ({b['n_images']} images)", b["name"])
+        self.choice.addItem("New batch...", NEW_BATCH)
+        self.choice.addItem("No batch", NO_BATCH)
+        self.choice.setCurrentIndex(self.choice.findData(NEW_BATCH))
+        form.addRow("Batch", self.choice)
+        self.name = QLineEdit()
+        self.name.setPlaceholderText("e.g. stain 2026-11-24")
+        form.addRow("New batch name", self.name)
+        self.note = QLineEdit()
+        self.note.setPlaceholderText("optional")
+        form.addRow("Note", self.note)
+        lay.addLayout(form)
+        self.where = QLabel()
+        self.where.setWordWrap(True)
+        self.where.setStyleSheet("color: gray")
+        lay.addWidget(self.where)
+        self.inside = all(Path(p).resolve().is_relative_to(ws.root) for p in files)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Add")
+        buttons.accepted.connect(self._accept)
+        buttons.rejected.connect(self.reject)
+        lay.addWidget(buttons)
+        self.choice.currentIndexChanged.connect(self._update)
+        self.name.textChanged.connect(self._update)
+        self._update()
+
+    def batch(self) -> str | None:
+        data = self.choice.currentData()
+        if data == NO_BATCH:
+            return None
+        if data == NEW_BATCH:
+            return self.name.text().strip() or None
+        return data
+
+    def _update(self, *_) -> None:
+        new = self.choice.currentData() == NEW_BATCH
+        self.name.setEnabled(new)
+        self.note.setEnabled(new)
+        from recap.workspace import safe_folder_name
+
+        folder = safe_folder_name(self.batch() or "images")
+        self.where.setText(
+            "They are in the workspace folder already: they stay where they are." if self.inside
+            else f"Copies go to the workspace's folder {folder}/; your originals are not changed."
+        )  # fmt: skip
+
+    def _accept(self) -> None:
+        if self.choice.currentData() == NEW_BATCH and not self.name.text().strip():
+            self.name.setFocus()
+            self.name.setPlaceholderText("type a name for the new batch")
+            return
+        self.accept()
+
+
+def add_images(parent, ws: Workspace, folder: bool = False):
+    """Ask for files (or a folder), then for their batch, and add them. Returns the AddResult or None."""
+    from recap.workspace import image_files_in
+
+    if folder:
+        d = QFileDialog.getExistingDirectory(parent, "Folder with images (subfolders included)")
+        sources = [Path(d)] if d else []
+    else:
+        paths, _ = QFileDialog.getOpenFileNames(parent, "Images to add", "", "TIFF images (*.tif *.tiff)")
+        sources = [Path(p) for p in paths]
+    if not sources:
+        return None
+    files = image_files_in(sources)
+    if not files:
+        QMessageBox.information(parent, "recap", "No .tif / .tiff images there.")
+        return None
+    d = AddImagesDialog(ws, files, parent)
+    if d.exec() != QDialog.DialogCode.Accepted:
+        return None
+    try:
+        return ws.add_images(files, d.batch(), note=d.note.text().strip() or None)
+    except RecapError as e:
+        QMessageBox.warning(parent, "recap", str(e))
+        return None

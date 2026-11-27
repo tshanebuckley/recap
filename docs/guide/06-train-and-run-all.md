@@ -6,7 +6,7 @@
 
 *As a lab member, I train a new model version on my corrected masks and compare it with earlier ones.*
 
-| In the app (**Training** tab) | In a terminal |
+| In the app (**Tuning and training** > **Training**) | In a terminal |
 |---|---|
 | **Train new version** (Model: stardist; Start from: empty = the model in use, or v1, v2...) | `recap train --epochs 20` (`--start v1`) |
 | **Compare all versions** | `recap models compare` |

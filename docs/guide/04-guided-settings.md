@@ -2,14 +2,14 @@
 
 [← 3. First pass](03-first-pass.md) · [Guide](README.md) · Next: [5. Tuning →](05-tuning.md)
 
-Guided mode shows an image's settings in the order recap uses them and redraws the result as
+The **Settings** tab (Guided mode) shows an image's settings in the order recap uses them and redraws the result as
 you change them, so you can see what each setting does before saving it for a batch or an image.
 
 ## US-13 Adjust settings step by step
 
 *As a lab member, I adjust an image's settings step by step and watch the outlines and counts change.*
 
-Open an image and press **Guided**. recap's outlines from the last run are hidden; the
+Open an image and choose the **Settings** tab. recap's outlines from the last run are hidden; the
 preview shows VRC+ nuclei in magenta and VRC− in cyan, with the counts below.
 
 | Step | Settings | What they do |
@@ -24,8 +24,8 @@ Hover any setting for an explanation. Filters and the infection call update in a
 steps 1 and 2 rerun the model (*Segmenting...*, a few seconds). **Undo changes** returns to the
 saved settings.
 
-**Done when:** the preview follows your changes; leaving Guided mode or opening another image
-with unsaved changes asks first.
+**Done when:** the preview follows your changes; leaving the Settings tab or opening another
+image with unsaved changes asks first.
 
 **Watch out for:** a run always uses the *saved* settings. Change, look, then save (US-14, US-15).
 
@@ -33,7 +33,7 @@ with unsaved changes asks first.
 
 *As a lab member, I save settings that suit a whole staining batch.*
 
-In Guided mode choose **Save to: batch: NAME** and **Save**. The line under the choice says
+In the Settings tab choose **Save to: batch: NAME** and **Save**. The line under the choice says
 what it affects:
 
 | Save to | Affects | Terminal |
@@ -50,7 +50,7 @@ the open one), another image of the batch shows the value tagged *batch*, and **
 brings them up to date.
 
 **Tip:** tune on one representative image of the batch, save to the batch, then check two or
-three other images of the batch in Guided mode before running them all.
+three other images of the batch in the Settings tab before running them all.
 
 ## US-15 Give one weakly stained image its own settings
 

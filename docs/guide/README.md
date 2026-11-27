@@ -2,7 +2,7 @@
 
 How to use recap from start to finish, for the lab and for the undergrads who test and develop
 it. Each page follows one stage of the workflow and is organised by the **user stories** of the
-test plan (US-01 to US-28): what you want to do, how to do it in the app and in a terminal, how
+test plan (US-01 to US-29): what you want to do, how to do it in the app and in a terminal, how
 to tell it worked, and what tends to go wrong.
 
 ```mermaid
@@ -28,7 +28,7 @@ go back to counting and correcting whenever the settings change.
 | Stage | Page | Stories |
 |---|---|---|
 | 1. Get started | [Install, open the app, set up Fiji](01-get-started.md) | US-01 to US-04 |
-| 2. Set up the workspace | [Your folder of images, staining batches](02-workspace.md) | US-05, US-06 |
+| 2. Set up the workspace | [Your folder of images, adding images, staining batches](02-workspace.md) | US-05, US-29, US-06 |
 | 3. First pass and manual counts | [Run, look, count, correct](03-first-pass.md) | US-07 to US-12 |
 | 4. Guided settings | [Settings for a batch or one image, with a live preview](04-guided-settings.md) | US-13 to US-16 |
 | 5. Tuning | [Let recap find better settings](05-tuning.md) | US-17 |
@@ -50,23 +50,28 @@ go back to counting and correcting whenever the settings change.
    one image. The most specific wins. Images stained together share a batch's settings; a valid
    image with weak staining can get its own, with a written reason.
 
-## The recap panel at a glance
+## The recap window at a glance
 
 ```
-Workspace: [my-experiment ▾] [Open...] [New...]
-[all images ▾]                                   filter: out of date, not counted, no corrected mask
-┌ image ─────────┬ batch ──┬ recap (VRC+) ┬ state ──────┬ manual (by) ┬ corrected ┬ own settings ┬ QC ┐
-│ day79_01.tif   │ stain A │ 472 (248)    │ up to date  │ 470 (ana)   │ 1         │              │    │
-│ day79_02.tif   │ stain A │ 455 (230)    │ out of date │ -           │ -         │ yes          │    │
-└────────────────┴─────────┴──────────────┴─────────────┴─────────────┴───────────┴──────────────┴────┘
-[Run selected] [Run out-of-date] [Run all]
-[Open image] [Set batch...] [Summary] [More ▾]   batches, import counts, report, Fiji, your name, recap.yaml
-( banner when the open image is out of date:  [Run this image] )
-[ Manual | Guided ]
-  Manual: Count in Fiji / Count here (VRC- VRC+) / Save count; New nucleus, Paint, Pick, Erase, Fill / Save corrected mask
-  Guided: five steps of settings with a live preview; Save to: workspace / batch / this image
-Tabs beside it: Tuning, Training
+[Add images ▾] [Tuning and training]                 [◀] [day79_01.tif  [up to date] ▾] [▶]
+┌──────────────────────────────────────────────┐  ( banner when the image is out of date: [Run this image] )
+│                                              │  [ Images | Count | Fix outlines | Settings ]
+│               the image                      │
+│   scroll = zoom, drag = pan                  │  Images:  Workspace [my-experiment ▾] [Open...] [New...]
+│                                              │           [all images ▾]  filter: out of date, not counted, ...
+│                                              │           image | batch | recap (VRC+) | state | manual | corrected | ...
+│                                              │           [Run selected] [Run out-of-date] [Run all]
+│                                              │           [Open image] [Set batch...] [Summary] [More ▾]
+│                                              │  Count:   click = VRC-, Shift+click = VRC+, right-click = remove
+│                                              │           [Undo] [Clear] [Save count]  [Count this image in Fiji instead]
+│                                              │  Fix outlines: [Draw new] [Delete] [Split] [Merge]  [Undo] [Save corrected mask]
+└──────────────────────────────────────────────┘  Settings: five steps with a live preview; Save to: workspace / batch / this image
+Show: [x] marker (ch 0) [x] ICP8 (ch 1) [x] DAPI (ch 2)  ...  brightness ───○───
 ```
+
+Each tab shows only what it needs: no recap outlines while you count, only the preview in
+Settings. Ctrl+1 to Ctrl+4 switch tabs. `recap gui --napari` opens the older layout (full
+napari with recap's panels) if you need napari's own tools.
 
 **State** tells you whether recap's count for an image is still valid: *up to date*, *out of
 date* (its settings or the model changed since it was run), *not run*, or *unknown* (recap.yaml

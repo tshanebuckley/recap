@@ -1,5 +1,37 @@
 # Changelog
 
+## 4.4.0 — 2026-11-25
+recap's own window instead of the full napari window, and adding images into batches.
+
+- **One window** (`recap gui`): the image on the left, drawn by napari's canvas only (no layer
+  list, layer controls or napari menus), and four tabs on the right: **Images** (the workspace,
+  the image table, runs and More, as before), **Count**, **Fix outlines** and **Settings**
+  (Guided mode). A **Show** bar under the image turns each stain on or off and sets brightness;
+  each tab shows only its own layers (no recap outlines while counting; only the preview in
+  Settings). Ctrl+1 to Ctrl+4 switch tabs, Ctrl+Z undoes the last point or outline edit, ◀ ▶ move
+  between images. **Tuning and training** open in their own window. Leaving a tab, an image or
+  the window with an unsaved count, outline corrections or settings asks first. `recap gui
+  --napari` keeps the 4.3 layout (napari with docked panels).
+- **Count tab**: click = VRC−, Shift+click = VRC+, right-click removes the nearest point; a drag
+  pans instead of adding a point. Undo, Clear, Save count, Continue my last count, and Count
+  this image in Fiji instead.
+- **Fix outlines tab**: Draw new (drag around a missed nucleus; only background is filled),
+  Delete (click), Split (drag a line across joined nuclei), Merge (click two pieces; a small gap
+  between them is closed); Undo (30 steps), Save corrected mask. Dragging pans except while
+  drawing or splitting. The editing logic is in `gui/editing.py`, without Qt.
+- **Adding images**: **Add images** in the app (image files or a folder, searched with its
+  subfolders) and `recap add FILES_OR_FOLDERS [--batch NAME | --no-batch] [--to SUBFOLDER]
+  [--note TEXT]`. Both ask which batch the images go into, or make a new one (the command
+  asks when neither option is given, and refuses when it cannot ask). Images from outside the
+  workspace are copied into a subfolder named after the batch; images already in the workspace
+  folder are indexed where they are; an image whose content is already in the workspace is not
+  copied again but still goes into the chosen batch. recap's own outputs (label images,
+  `recap-data/`) are skipped. Library: `Workspace.add_images`, `workspace.image_files_in`.
+- **Channel names** in the app include their channel number (`DAPI (ch 2)`, `ICP8 (ch 1)`,
+  `marker (ch 0)`), so a wrong channel in the settings shows at a glance.
+- Tests: `tests/test_window.py` (the editing logic; the window with Qt off-screen: tabs, layer
+  visibility, clicking, drawing, saving, asking before leaving, adding images to a batch).
+
 ## 4.3.0 — 2026-11-24
 One settings file and one database per workspace; the command line and the app do the same
 things through the same code.

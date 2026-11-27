@@ -1,8 +1,9 @@
 [workspace]
 name = "recap"
-version = "4.3.0"
+version = "4.4.0"
 description = "recap (Reconstruction of Cellular Architecture and Phenotypes): nuclear segmentation and HSV-1 infection scoring (DAPI + ICP8)"
 channels = ["conda-forge"]
+conda-pypi-map = { "conda-forge" = { location = "map.json", mapping-mode = "replace" } }
 # linux-64 also covers WSL2 on Intel/AMD Windows PCs. osx-arm64 is Apple silicon; Intel Macs are
 # not supported (no TensorFlow 2.21 build for them). win-64 is native Windows 10/11.
 platforms = ["linux-64", "osx-arm64", "win-64"]

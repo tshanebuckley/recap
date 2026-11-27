@@ -239,6 +239,7 @@ class GuidedPage(QWidget):
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setWidget(inner)
         lay.addWidget(scroll)
+        self.scroll = scroll
         self.readout = QLabel("")
         self.readout.setWordWrap(True)
         lay.addWidget(self.readout)

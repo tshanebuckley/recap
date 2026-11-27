@@ -138,6 +138,78 @@ def init(
         typer.echo("Check the channel numbers in recap.yaml (or in the app's Guided mode) before running.")
 
 
+def _interactive() -> bool:
+    """A person at a terminal (questions can be asked)."""
+    return sys.stdin.isatty()
+
+
+def _ask_batch(ws, n: int) -> tuple[str | None, str | None]:
+    """Which batch the new images go into: an existing one, a new one, or none. (name, note)"""
+    batches = [b["name"] for b in ws.batches()]
+    typer.echo(f"Which staining batch are these {n} image(s) from?")
+    for k, name in enumerate(batches, 1):
+        typer.echo(f"  {k}) {name}")
+    typer.echo("  n) a new batch\n  0) no batch")
+    while True:
+        choice = typer.prompt("Choice", default="n").strip().lower()
+        if choice == "0":
+            return None, None
+        if choice == "n":
+            name = typer.prompt("Name of the new batch (e.g. 'stain 2026-11-24')").strip()
+            if name:
+                return name, typer.prompt("Note (optional)", default="", show_default=False).strip() or None
+        elif choice.isdigit() and 1 <= int(choice) <= len(batches):
+            return batches[int(choice) - 1], None
+        typer.echo("Please answer with a number from the list, n or 0.")
+
+
+@app.command()
+def add(
+    sources: Annotated[list[Path], typer.Argument(exists=True, help="Image files and/or folders of images.")],
+    workspace: Annotated[
+        Path,
+        typer.Option("--workspace", "-w", exists=True, file_okay=False, help="Workspace (default: current folder's)."),
+    ] = Path("."),
+    batch: Annotated[str | None, typer.Option(help="Put them in this staining batch (created if new).")] = None,
+    no_batch: Annotated[bool, typer.Option("--no-batch", help="Add without a batch.")] = False,
+    to: Annotated[
+        str | None, typer.Option("--to", help="Subfolder to copy into (default: the batch's name, else 'images').")
+    ] = None,
+    note: Annotated[str | None, typer.Option(help="Note for a new batch.")] = None,
+) -> None:
+    """Add images to a workspace: files, or every .tif / .tiff in folders (subfolders included).
+
+    \b
+    Images from outside the workspace are copied into it (into a subfolder named after the batch,
+    or --to). Images whose content is already in the workspace are not copied again. Without
+    --batch or --no-batch, recap asks which staining batch they belong to (an existing one, a
+    new one, or none). The app's Add images does the same.
+    Examples:
+      recap add ~/scans/2026-11-24/ --batch "stain 2026-11-24"
+      recap add new_image.tif
+    """
+    ws = _ws(workspace, settings=False)
+    from recap.workspace import image_files_in
+
+    files = image_files_in(sources)
+    if not files:
+        _fail("No .tif / .tiff images found in what was given.")
+    if batch and no_batch:
+        _fail("Give --batch or --no-batch, not both.")
+    if not batch and not no_batch:
+        if not _interactive():
+            _fail("Say which batch: --batch NAME, or --no-batch.")
+        typer.echo(f"{len(files)} image(s) found.")
+        batch, ask_note = _ask_batch(ws, len(files))
+        note = note or ask_note
+    try:
+        res = ws.add_images(files, batch, to, note)
+    except RecapError as e:
+        _fail(f"ERROR: {e}")
+    typer.echo(res.message())
+    typer.echo("Run them with: recap run --out-of-date")
+
+
 @app.command()
 def validate(target: WsArg = Path(".")) -> None:
     """Check a workspace's settings (or a settings file) without running anything.
@@ -518,12 +590,16 @@ def gui(
             help="A workspace folder (default: the last one used, else the example workspace).",
         ),
     ] = None,
+    napari: Annotated[
+        bool, typer.Option("--napari", help="Full napari with recap's panels docked (all of napari's tools).")
+    ] = False,
 ) -> None:
-    """Open the recap desktop app (napari).
+    """Open the recap desktop app.
 
-    Panels on the right: recap (choose or create a workspace; its images and their status; run;
-    Manual mode: count and correct outlines; Guided mode: settings step by step with a live
-    preview), Tuning and Training. Only one copy of the app runs at a time: starting it again
+    The image with one side panel: Images (workspace, images, runs, batches, adding images),
+    Count (click = VRC-, Shift+click = VRC+, right-click = remove), Fix outlines (draw, delete,
+    split, merge) and Settings (step by step with a live preview). --napari opens the full napari
+    with recap's panels instead. Only one copy of the app runs at a time: starting it again
     brings the open window to the front.
     """
     try:
@@ -531,7 +607,7 @@ def gui(
     except ImportError as e:
         _fail(f"The desktop app needs napari and Qt ({e}). They are in both pixi environments: pixi install")
     try:
-        started = run_app(path)
+        started = run_app(path, full_napari=napari)
     except (ConfigError, ValidationError) as e:
         _fail(f"Cannot open the app:\n{e}")
     if not started:

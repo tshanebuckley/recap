@@ -1,4 +1,4 @@
-# recap 4.3.0
+# recap 4.4.0
 
 **recap: Reconstruction of Cellular Architecture and Phenotypes**
 
@@ -40,7 +40,8 @@ recap tune [FOLDER]              # better settings, scored against corrected mas
 recap train [FOLDER]             # a new model version from corrected masks
 recap models list|compare|use    # versions, their scores, and which one the workspace uses
 recap fiji set|check|show|unset  # the Fiji recap opens for counting
-recap gui [FOLDER]               # desktop app (napari): everything above, plus Manual and Guided modes
+recap add FILES/FOLDERS [--batch NAME]  # copy images into the workspace, into a batch
+recap gui [FOLDER]               # desktop app: everything above, plus counting, outlines and settings
 recap desktop-icon               # desktop icon that opens the app
 recap template FILE              # a settings file for a run outside any workspace
 recap --version
@@ -166,7 +167,8 @@ recap run path/to/images
 ```
 
 Or open the app (`recap gui`), press **New...**, choose the folder, and copy a settings file or
-start from the defaults. In a workspace's `recap.yaml`, `input.images: []` means every image in
+start from the defaults. Images from elsewhere: **Add images** in the app, or
+`recap add FILES_OR_FOLDERS --batch NAME` (copies them in; asks for the batch if you leave it out). In a workspace's `recap.yaml`, `input.images: []` means every image in
 the folder (or give globs relative to it); a settings file run on its own (`recap run file.yaml`)
 lists its images relative to itself. Channel indices are 0-based after loading as
 (channel, y, x); for RGB exports red = 0, green = 1, blue = 2. Z-stacks are max-projected.
@@ -296,7 +298,7 @@ recap settings show data/day79_04.tif        # effective settings, and where eac
 recap settings clear --image data/day79_04.tif               # back to the batch's settings
 ```
 
-The app's **Guided mode** saves the same way: change values with the preview, choose *Save to:*
+The app's **Settings** tab (Guided mode) saves the same way: change values with the preview, choose *Save to:*
 workspace, the batch or this image. Levels can change recovery, segmentation thresholds,
 fragment merging, filters, the infection call and `exclude_regions`. They cannot change the
 model, so every image in a workspace is segmented by the same one. An image's own settings need
@@ -308,8 +310,8 @@ on images of varying quality.
 
 ## Tuning and training
 
-Correct recap's outlines in the app (Manual mode > *Correct outlines*: New nucleus, Paint, Pick,
-Erase, Fill; then **Save corrected mask**). Corrected masks are the reference for:
+Correct recap's outlines in the app (**Fix outlines** tab: Draw new, Delete, Split, Merge; then
+**Save corrected mask**). Corrected masks are the reference for:
 
 ```bash
 recap tune --trials 30 --apply-to workspace   # best settings into recap.yaml (or batch:NAME); the app: Tuning > Apply
@@ -352,22 +354,27 @@ pixi run recap gui path/to/workspace     # a workspace folder
 pixi run recap desktop-icon              # desktop icon that opens the app
 ```
 
-recap's panel on the right of [napari](https://napari.org):
+One window: the image on the left (drawn by [napari](https://napari.org), with only what
+counting and correcting need), and four tabs on the right. Ctrl+1 to Ctrl+4 switch tabs; Ctrl+Z
+undoes the last point or outline edit.
 
-- **Workspace**: Open... a folder (or New... to make one a workspace), recent workspaces, the
-  image table (filter: out of date, not counted, no corrected mask), **Run selected / Run
-  out-of-date / Run all**, Set batch, Summary, and More: batches, import counts, report, Fiji
-  location, your name, edit recap.yaml. A banner says when the open image's results are out of
-  date, with **Run this image**.
-- **Manual | Guided**: Manual mode counts (in Fiji, or by clicking with VRC− / VRC+ buttons) and
-  corrects outlines (New nucleus, Paint, Pick, Erase, Fill, then Save corrected mask). Guided mode
-  shows the image's settings in five steps with a live preview (VRC+ magenta, VRC− cyan) and
-  saves them to the workspace, the batch or this image. Each mode shows only its own layers.
-- **Tuning** and **Training** tabs: tune and apply the best settings; train, compare and choose
-  model versions.
+- **Top bar**: **Add images** (files or a folder; asks which batch, or makes a new one),
+  **Tuning and training** (their own window), and ◀ the image list ▶.
+- **Images**: the workspace (Open... / New..., recent workspaces), the image table (filter: out
+  of date, not counted, no corrected mask), **Run selected / Run out-of-date / Run all**, Set
+  batch, Summary, and More: batches, import counts, report, Fiji location, your name, edit
+  recap.yaml. A banner says when the open image's results are out of date, with **Run this image**.
+- **Count**: click = VRC−, Shift+click = VRC+, right-click removes a point; Undo, Save count;
+  or count this image in Fiji instead.
+- **Fix outlines**: Draw new (drag around a missed nucleus), Delete, Split (drag a line across),
+  Merge (click two pieces); Undo, Save corrected mask.
+- **Settings** (Guided): the image's settings in five steps with a live preview (VRC+ magenta,
+  VRC− cyan), saved to the workspace, the batch or this image.
 
-They are a napari plugin, so they are also under Plugins in any napari with recap installed. One
-copy of the app runs at a time. See [`docs/gui.md`](docs/gui.md).
+Each tab shows only its own layers; leaving a tab, an image or the app with unsaved work asks
+first. One copy of the app runs at a time. `recap gui --napari` opens the 4.3 layout (full
+napari with recap's docked panels) for anything the window does not cover. See
+[`docs/gui.md`](docs/gui.md).
 
 ## Using recap from Python
 

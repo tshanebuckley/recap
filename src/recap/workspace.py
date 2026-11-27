@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -89,6 +90,59 @@ def image_metadata(path: Path) -> dict[str, Any]:
     else:  # unlabelled extra axis (e.g. a plain (2, y, x) stack) = channels
         channels = other[0] if len(other) == 1 else 1
     return dict(width=width, height=height, channels=channels, dtype=str(series.dtype), pixel_size=pixel_size)
+
+
+@dataclass
+class AddResult:
+    added: list[Path]  # new images now in the workspace
+    already: list[Path]  # chosen files whose content was already in the workspace
+    copied: list[Path]  # where copies were made (subset of added)
+    batch: str | None
+    folder: Path  # where copies go
+
+    def message(self) -> str:
+        parts = [f"{len(self.added)} image(s) added"]
+        if self.copied:
+            parts.append(f"copied to {self.folder.name}/")
+        if self.already:
+            parts.append(f"{len(self.already)} already in the workspace")
+        if self.batch:
+            parts.append(f"batch {self.batch!r}")
+        return ", ".join(parts) + "."
+
+
+def image_files_in(sources: list[Path]) -> list[Path]:
+    """Image files among the given files and in the given folders (recap outputs and recap-data skipped)."""
+    out: list[Path] = []
+    for src in sources:
+        src = Path(src)
+        cands = [src] if src.is_file() else sorted(p for p in src.rglob("*") if p.is_file())
+        for p in cands:
+            if p.suffix.lower() not in IMAGE_SUFFIXES or DATA_DIR in p.parts:
+                continue
+            if p.stem.endswith(DERIVED_SUFFIXES) or "_edited_" in p.stem or p.stem.endswith("_for_counting"):
+                continue
+            out.append(p)
+    seen, unique = set(), []
+    for p in out:
+        if p.resolve() not in seen:
+            seen.add(p.resolve())
+            unique.append(p)
+    return unique
+
+
+def safe_folder_name(name: str) -> str:
+    keep = "".join(c if c.isalnum() or c in " -_." else "_" for c in name).strip(" .")
+    return keep or "images"
+
+
+def unique_path(p: Path) -> Path:
+    """p, or p with _2, _3 ... before the suffix if a file of that name exists."""
+    k, out = 1, p
+    while out.exists():
+        k += 1
+        out = p.with_name(f"{p.stem}_{k}{p.suffix}")
+    return out
 
 
 def workspace_root(path: Path) -> Path | None:
@@ -764,6 +818,52 @@ class Workspace:
             raise RecapError("No runs in this workspace yet: run recap first (recap run, or Run in the app).")
         out = Path(out) if out else self.folder("reports") / dt.datetime.now().strftime("%Y%m%d_%H%M%S")
         return build_report(runs, [self.db_path], out, iou)
+
+    # ---- adding images -----------------------------------------------------------------------------
+    def add_images(
+        self,
+        sources: list[Path],
+        batch: str | None = None,
+        subfolder: str | None = None,
+        note: str | None = None,
+        progress=None,
+    ) -> AddResult:
+        """Bring image files, or every image in folders, into the workspace and (optionally) a batch.
+
+        Files outside the workspace are copied into `subfolder` (default: the batch's name, else
+        "images"); files already inside are used where they are. An image whose content is
+        already in the workspace is not copied again. `batch` is created if new; None = no batch.
+        `recap add` and the app's Add images both use this."""
+        import shutil
+
+        files = image_files_in(sources)
+        if not files:
+            raise RecapError("No .tif / .tiff images found in what was chosen.")
+        known = {r["sha256"]: r["name"] for r in self.status()}
+        dest = self.root / safe_folder_name(subfolder or batch or "images")
+        added, existing, moved = [], [], []
+        shas = []
+        for k, src in enumerate(files, 1):
+            if progress:
+                progress(k, len(files), src)
+            sha = file_sha256(src)
+            if sha in known or sha in shas:
+                existing.append(src)
+                shas.append(sha)
+                continue
+            if src.resolve().is_relative_to(self.root):
+                target = src  # already in the folder: index it where it is
+            else:
+                dest.mkdir(parents=True, exist_ok=True)
+                target = unique_path(dest / src.name)
+                shutil.copy2(src, target)
+                moved.append(target)
+            added.append(target)
+            shas.append(sha)
+        self.scan()
+        if batch:
+            self.assign_batch(shas, batch, note)
+        return AddResult(added, existing, moved, batch, dest)
 
     # ---- models in use -------------------------------------------------------------------------------
     def use_model(self, family: str, version: int | None) -> str:

@@ -98,7 +98,7 @@ def test_workspace_run_count_correct_and_save(app, ws, monkeypatch):
     _select(p, "img1.tif")
     p.open_selected()
     names = [ly.name for ly in viewer.layers]
-    assert names[-1] == "nuclei (program)" and {"DAPI", "VRC (ICP8)"} <= set(names)
+    assert names[-1] == "nuclei (program)" and {"DAPI (ch 0)", "ICP8 (ch 1)"} <= set(names)
     # count here
     p.manual.count_here()
     viewer.layers["count: VRC-"].data = np.array([[10.0, 20.0], [30.0, 40.0]])  # (row, col) = (y, x)

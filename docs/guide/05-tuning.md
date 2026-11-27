@@ -13,7 +13,7 @@ masks: how many real nuclei it finds and how few extra ones it adds (F1, from 0 
 | In the app | In a terminal |
 |---|---|
 | Correct masks on at least 3 images (US-11) | |
-| **Tuning** tab: **Trials** 30, **Run tuning** | `recap tune --trials 30` |
+| **Tuning and training** > **Tuning**: **Trials** 30, **Run tuning** | `recap tune --trials 30` |
 | *Use the best settings for:* the workspace or a batch, **Apply** | `recap tune --apply-to workspace` (or `batch:NAME`) |
 | **Run out-of-date** in the recap tab | `recap run --out-of-date` |
 
@@ -26,7 +26,7 @@ counts are closer to the manual counts (check with the report, US-20).
 **Watch out for:**
 - Tuning is only as good as the corrected masks. Correct a few images from different batches.
 - Each image's batch and image settings are applied on top of the values being tried, so tuning
-  respects the per-batch choices you made in Guided mode.
+  respects the per-batch choices you made in the Settings tab.
 - Applying to a batch stores only values that differ from recap.yaml.
 - A big jump in F1 from a filter alone (for example a very strict minimum area) can mean the
-  corrected masks left out small nuclei. Look at a few images in Guided mode before running all.
+  corrected masks left out small nuclei. Look at a few images in the Settings tab before running all.

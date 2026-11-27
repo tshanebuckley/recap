@@ -20,8 +20,8 @@ the **Workspace** list remembers recent ones.
 
 **Choosing the settings to start from:** copy a settings file that already worked on similar
 images (for the day-79 organoids: `examples/recap.yaml`). Starting from defaults means checking
-the channel numbers yourself: Guided mode (US-13) shows the result immediately, or open
-More > **Edit settings file (recap.yaml)**. Channel numbers start at 0; for RGB exports red = 0,
+the channel numbers yourself: the Settings tab (US-13) shows the result immediately, or open
+Images > More > **Edit settings file (recap.yaml)**. Channel numbers start at 0; for RGB exports red = 0,
 green = 1, blue = 2.
 
 **Watch out for:**
@@ -31,6 +31,33 @@ green = 1, blue = 2.
   its workspace-wide settings move into recap.yaml. See US-23.
 - Keep workspaces on a local disk. Synced folders (OneDrive, network drives) may lock the
   database (technical check W-05).
+
+## US-29 Add images to the workspace, into a batch
+
+*As a lab member, I add new image files or a folder of images to my workspace and choose the
+batch they belong to.*
+
+| In the app | In a terminal |
+|---|---|
+| **Add images** > *Image files...* (one or several) or *A folder of images...* | `recap add new_image.tif` or `recap add path/to/folder` |
+| Choose the batch: an existing one, **New batch...** (name, optional note) or *No batch*; **Add** | it asks the same; or `--batch "stain 2026-11-25"`, `--no-batch` |
+
+A folder is searched with its subfolders for TIFF images; recap's own outputs (label images,
+`recap-data/`) are skipped. Images from outside the workspace are **copied** into a subfolder
+named after the batch (`--to NAME` chooses another); your originals are not touched. Images
+already inside the workspace folder stay where they are. An image whose content is already in
+the workspace is not copied a second time, but it still goes into the batch you chose. The
+message says how many were added, copied and already there.
+
+**Done when:** the new images are in the table with the batch you chose, state *not run*; run
+them with **Run out-of-date** (or select them, **Run selected**).
+
+**Watch out for:**
+- A new staining day is a new batch. Adding its images to an older batch gives them that
+  batch's settings, which may not suit them.
+- Copies take disk space; for very large folders, put the images into the workspace folder
+  yourself, More > **Rescan folder**, then **Set batch...**.
+- In a script, `recap add` needs `--batch` or `--no-batch` (it cannot ask).
 
 ## US-06 Group images stained together into a batch
 

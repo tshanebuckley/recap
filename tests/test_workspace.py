@@ -110,3 +110,43 @@ def test_init_from_settings_file_and_42_workspace_settings_move_into_recap_yaml(
         assert s.exec(select(LevelSettingsRow).where(LevelSettingsRow.level == "workspace")).first() is None
     assert run_cli("init", synth_dir, "--from", old).exit_code == 1  # recap.yaml exists: not replaced
     assert run_cli("validate", synth_dir).output.strip().endswith("OK: 6 image(s) found.")
+
+
+def test_add_images_files_folders_batches_and_duplicates(synth_dir, tmp_path, monkeypatch):
+    import shutil
+
+    from helpers import make_ws, run_cli
+
+    ws_dir = tmp_path / "ws"
+    ws_dir.mkdir()
+    make_ws(ws_dir)
+    src = synth_dir / "data"
+    extra = tmp_path / "scans" / "day2"
+    extra.mkdir(parents=True)
+    shutil.copy(src / "img3.tif", extra / "img3.tif")
+    shutil.copy(src / "img4.tif", extra / "img4.tif")
+    (extra / "img4_labels.tif").write_bytes((src / "img4.tif").read_bytes())  # a recap output: skipped
+    ws = Workspace(ws_dir)
+    res = ws.add_images([src / "img1.tif"], batch="stain A", note="first")
+    assert [p.name for p in res.added] == ["img1.tif"] and (ws_dir / "stain A" / "img1.tif").is_file()
+    res = ws.add_images([tmp_path / "scans"], batch="stain B")  # a folder: subfolders included
+    assert sorted(p.name for p in res.added) == ["img3.tif", "img4.tif"] and res.already == []
+    res = ws.add_images([src / "img1.tif", src / "img2.tif"], batch="stain B")  # img1: same content
+    assert [p.name for p in res.added] == ["img2.tif"] and [p.name for p in res.already] == ["img1.tif"]
+    assert "1 already in the workspace" in res.message()
+    batches = {r["name"]: r["batch"] for r in ws.status()}
+    assert batches == {"img1.tif": "stain B", "img2.tif": "stain B", "img3.tif": "stain B", "img4.tif": "stain B"}
+    inside = ws_dir / "loose.tif"
+    shutil.copy(src / "img5.tif", inside)
+    res = ws.add_images([inside])  # already in the folder: indexed where it is, no batch
+    assert res.added == [inside] and res.copied == [] and not (ws_dir / "images").exists()
+    res = ws.add_images([src / "img6.tif"])
+    assert (ws_dir / "images" / "img6.tif").is_file()  # no batch: the 'images' folder
+    # the command: asks which batch when not told
+    assert run_cli("add", src / "img2.tif", "-w", ws_dir).exit_code == 1  # not interactive: must say
+    monkeypatch.setattr("recap.cli._interactive", lambda: True)
+    res = run_cli("add", tmp_path / "scans", "-w", ws_dir, input="1\n")  # 1) the first batch listed
+    assert res.exit_code == 0 and "Which staining batch" in res.output and "2 already in the workspace" in res.output
+    res = run_cli("add", src / "img1.tif", "-w", ws_dir, "--batch", "stain C", "--to", "redo")
+    assert res.exit_code == 0 and "0 image(s) added" in res.output
+    assert {r["name"]: r["batch"] for r in Workspace(ws_dir).status()}["img1.tif"] == "stain C"

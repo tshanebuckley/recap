@@ -23,11 +23,11 @@ def test_view_from_workspace(synth_dir):
     sha = file_sha256(synth_dir / "data" / "img1.tif")
     view = view_from_workspace(ws, sha)  # before a run: image only, with a hint
     assert view.labels is None and "Run selected" in view.messages[0]
-    assert set(view.channels) == {"VRC (ICP8)", "DAPI"}  # named by the workspace's settings
+    assert set(view.channels) == {"ICP8 (ch 1)", "DAPI (ch 0)"}  # named by the workspace's settings
     assert run_cli("run", synth_dir, "-i", synth_dir / "data" / "img1.tif").exit_code == 0
     view = view_from_workspace(ws, sha)
     assert view.labels is not None and view.labels.max() == 4  # 4 synthetic nuclei
-    assert view.labels.shape == view.channels["DAPI"][0].shape and not view.messages
+    assert view.labels.shape == view.channels["DAPI (ch 0)"][0].shape and not view.messages
 
 
 def test_example_workspace_is_found():
